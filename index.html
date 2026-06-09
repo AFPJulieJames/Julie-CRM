@@ -361,73 +361,68 @@
         <h2 class="section" style="border:0;padding:0;margin:0">Quote Calculator</h2>
         <button type="button" class="btn secondary sm" onclick="pullFromOrder()">Pull from current order</button>
       </div>
-      <p class="sub">Fuel-adjusted pricing using RateBot's formula. Enter the base carrier cost for the lane; the tool adds the fuel adder for today's regional diesel and applies your margin.</p>
+      <p class="sub">Enter the pickup and delivery ZIP. Miles fill in automatically and the price comes from your RateBot Lane Index: your real rate for that lane when you have run it, otherwise your regional per-car-mile rate.</p>
 
       <div class="qgrid">
         <div class="qfield">
-          <label>Origin state</label>
-          <select id="q_state" onchange="onStateChange()"></select>
-          <span class="hint">EIA region: <span class="reg-badge" id="q_region_label">US (national)</span></span>
+          <label>Pickup ZIP</label>
+          <input type="text" id="q_pzip" inputmode="numeric" maxlength="5" placeholder="e.g. 95821" oninput="onZipChange()">
+          <span class="hint"><span class="reg-badge" id="q_region_label">enter a ZIP</span></span>
         </div>
         <div class="qfield">
-          <label>Lane miles</label>
-          <input type="number" id="q_miles" step="1" min="0" placeholder="e.g. 1200">
+          <label>Delivery ZIP</label>
+          <input type="text" id="q_dzip" inputmode="numeric" maxlength="5" placeholder="e.g. 95113" oninput="onZipChange()">
+          <span class="hint"><span class="reg-badge" id="q_dest_label">&nbsp;</span></span>
+        </div>
+        <div class="qfield">
+          <label>Lane miles <span class="hint" style="font-weight:400">(auto, editable)</span></label>
+          <input type="number" id="q_miles" step="1" min="0" placeholder="auto from ZIPs" oninput="onMilesEdit()">
+        </div>
+        <div class="qfield">
+          <label>Vehicle class</label>
+          <select id="q_vclass" onchange="renderQuote();saveQSettings();">
+            <option value="sedan">Sedan / Coupe</option>
+            <option value="suv">SUV / Crossover / Minivan</option>
+            <option value="truck">Truck / Van</option>
+          </select>
         </div>
         <div class="qfield">
           <label>Number of vehicles</label>
           <input type="number" id="q_cars" step="1" min="1" value="1">
         </div>
-        <div class="qfield">
-          <label>Vehicle type</label>
-          <select id="q_vtype" onchange="onVtypeChange()">
-            <option value="sedan">Sedan (9 cars / 6.5 MPG)</option>
-            <option value="suv">SUV / crossover (7 cars / 6.2 MPG)</option>
-            <option value="truck">Truck / van (6 cars / 5.8 MPG)</option>
-          </select>
-        </div>
-        <div class="qfield">
-          <label>Base carrier cost ($)</label>
-          <input type="number" id="q_cost" step="1" min="0" placeholder="what the carrier hauls it for">
-        </div>
-        <div class="qfield">
-          <label>Baseline diesel ($/gal)</label>
-          <input type="number" id="q_baseline" step="0.01" placeholder="diesel when that cost was set">
-          <span class="hint">Leave blank to use today's regional diesel (no fuel adjustment).</span>
-        </div>
-        <div class="qfield">
-          <label>Carrier capacity (cars/truck)</label>
-          <input type="number" id="q_cap" step="1" min="1" value="9">
-        </div>
-        <div class="qfield">
-          <label>Truck MPG</label>
-          <input type="number" id="q_mpg" step="0.1" min="1" value="6.5">
-        </div>
-        <div class="qfield">
-          <label>Target margin (%)</label>
-          <input type="number" id="q_margin" step="1" min="0" max="99" value="33">
-        </div>
       </div>
 
       <details class="diesel">
-        <summary>Current diesel by region ($/gal) — editable</summary>
-        <div class="reg-prices" id="q_regPrices"></div>
+        <summary>Advanced</summary>
+        <div class="qgrid" style="margin:6px 0 4px">
+          <div class="qfield">
+            <label>Adjustment (%)</label>
+            <input type="number" id="q_adjust" step="1" value="0" placeholder="0">
+            <span class="hint">Optional markup or discount on the Index price. Leave at 0 for the straight rate.</span>
+          </div>
+          <div class="qfield"><label>Sedan multiplier</label><input type="number" step="0.01" id="q_m_sedan" value="1.00"></div>
+          <div class="qfield"><label>SUV multiplier</label><input type="number" step="0.01" id="q_m_suv" value="1.20"></div>
+          <div class="qfield"><label>Truck/Van multiplier</label><input type="number" step="0.01" id="q_m_truck" value="1.40"></div>
+        </div>
+        <p class="hint" id="q_datastatus" style="margin:4px 0 0">Lane Index: loading…</p>
       </details>
 
       <div class="quote-out" id="q_out" style="display:none">
         <div class="big" id="q_quote">$0</div>
         <div class="percar" id="q_percar"></div>
-        <div class="line"><span>Base carrier cost</span><b id="q_o_base">$0</b></div>
-        <div class="line"><span>Fuel adder (today's diesel)</span><b id="q_o_adder">$0</b></div>
-        <div class="line"><span>Projected cost</span><b id="q_o_proj">$0</b></div>
-        <div class="line"><span>Margin applied</span><b id="q_o_margin">33%</b></div>
+        <div class="line"><span>Basis</span><b id="q_o_basis">—</b></div>
+        <div class="line"><span>Vehicle class</span><b id="q_o_class">—</b></div>
+        <div class="line"><span>Lane miles</span><b id="q_o_miles">—</b></div>
+        <div class="line"><span>Rate per vehicle-mile</span><b id="q_o_pcm">—</b></div>
+        <div class="line" id="q_o_rangewrap" style="display:none"><span>Typical range on this lane</span><b id="q_o_range">—</b></div>
       </div>
-      <p class="hint" id="q_hint" style="margin-top:14px">Enter lane miles and a base carrier cost to see a quote.</p>
+      <p class="hint" id="q_hint" style="margin-top:14px">Enter pickup and delivery ZIP to see a quote.</p>
 
       <div class="actions" style="justify-content:flex-start;margin-top:8px">
         <button type="button" class="btn" onclick="copyQuote()">Copy quote summary</button>
         <button type="button" class="btn secondary" onclick="quoteToOrder()">Add to current order notes</button>
       </div>
-      <p class="hint">Note: RateBot's model prices on fuel, distance, load share and margin. It does not include an enclosed-trailer factor, so that is not added here.</p>
+      <p class="hint">Prices come from your own shipping history (RateBot Lane Index, as of 2026-06). Exact-lane matches use the city each ZIP maps to; suburb ZIPs may fall back to the regional rate.</p>
     </div>
   </div>
 
@@ -1033,125 +1028,120 @@ function download(name,content,type){
   const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);
 }
 
-/* ================= QUOTE (RateBot fuel-adjusted) ================= */
+/* ================= QUOTE (RateBot Lane Index) ================= */
 const QKEY='orderEntry.quoteSettings.v1';
-const REG_LABEL={US:'US (national)',CA:'California',PADD1:'East Coast',PADD2:'Midwest',PADD3:'Gulf',PADD4:'Rocky Mountain',PADD5X:'West (AZ/NV/OR/WA)'};
-const REG_DEFAULT={US:5.60,CA:7.22,PADD1:5.65,PADD2:5.53,PADD3:5.33,PADD4:5.07,PADD5X:5.90};
-const REGS=['US','CA','PADD1','PADD2','PADD3','PADD4','PADD5X'];
-const VTYPE={sedan:{cap:9,mpg:6.5},suv:{cap:7,mpg:6.2},truck:{cap:6,mpg:5.8}};
-// state -> EIA region (CA broken out; rest of West = PADD5X)
-const STATE_REGION={
-  CA:'CA',
-  AZ:'PADD5X',NV:'PADD5X',OR:'PADD5X',WA:'PADD5X',AK:'PADD5X',HI:'PADD5X',
-  CO:'PADD4',ID:'PADD4',MT:'PADD4',UT:'PADD4',WY:'PADD4',
-  AL:'PADD3',AR:'PADD3',LA:'PADD3',MS:'PADD3',NM:'PADD3',TX:'PADD3',
-  IL:'PADD2',IN:'PADD2',IA:'PADD2',KS:'PADD2',KY:'PADD2',MI:'PADD2',MN:'PADD2',MO:'PADD2',NE:'PADD2',ND:'PADD2',OH:'PADD2',OK:'PADD2',SD:'PADD2',TN:'PADD2',WI:'PADD2',
-  CT:'PADD1',DE:'PADD1',DC:'PADD1',FL:'PADD1',GA:'PADD1',ME:'PADD1',MD:'PADD1',MA:'PADD1',NH:'PADD1',NJ:'PADD1',NY:'PADD1',NC:'PADD1',PA:'PADD1',RI:'PADD1',SC:'PADD1',VT:'PADD1',VA:'PADD1',WV:'PADD1'
-};
-const STATES=['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
-let quoteBuilt=false;
+const ZIP_RANGES=[[5,5,'NY'],[10,27,'MA'],[28,29,'RI'],[30,38,'NH'],[39,49,'ME'],[50,59,'VT'],[60,69,'CT'],[70,89,'NJ'],[100,149,'NY'],[150,196,'PA'],[197,199,'DE'],[200,205,'DC'],[206,219,'MD'],[220,246,'VA'],[247,268,'WV'],[270,289,'NC'],[290,299,'SC'],[300,319,'GA'],[320,349,'FL'],[350,369,'AL'],[370,385,'TN'],[386,397,'MS'],[398,399,'GA'],[400,427,'KY'],[430,459,'OH'],[460,479,'IN'],[480,499,'MI'],[500,528,'IA'],[530,549,'WI'],[550,567,'MN'],[570,577,'SD'],[580,588,'ND'],[590,599,'MT'],[600,629,'IL'],[630,658,'MO'],[660,679,'KS'],[680,693,'NE'],[700,714,'LA'],[716,729,'AR'],[730,749,'OK'],[750,799,'TX'],[800,816,'CO'],[820,831,'WY'],[832,838,'ID'],[840,847,'UT'],[850,865,'AZ'],[870,884,'NM'],[889,898,'NV'],[900,961,'CA'],[967,968,'HI'],[970,979,'OR'],[980,994,'WA'],[995,999,'AK']];
+function zipToState(zip){const d=(zip||'').replace(/\D/g,'');if(d.length<3)return '';const p=parseInt(d.slice(0,3),10);for(const r of ZIP_RANGES){if(p>=r[0]&&p<=r[1])return r[2];}return '';}
+// state -> Lane Index region key (P1 East, P2 Midwest, P4 Rocky Mtn, P5X West, CA). Gulf/unknown -> '' (national rate).
+const STATE_IDXREG={CA:'CA',AZ:'P5X',NV:'P5X',OR:'P5X',WA:'P5X',AK:'P5X',HI:'P5X',CO:'P4',ID:'P4',MT:'P4',UT:'P4',WY:'P4',
+  IL:'P2',IN:'P2',IA:'P2',KS:'P2',KY:'P2',MI:'P2',MN:'P2',MO:'P2',NE:'P2',ND:'P2',OH:'P2',OK:'P2',SD:'P2',TN:'P2',WI:'P2',
+  CT:'P1',DE:'P1',DC:'P1',FL:'P1',GA:'P1',ME:'P1',MD:'P1',MA:'P1',NH:'P1',NJ:'P1',NY:'P1',NC:'P1',PA:'P1',RI:'P1',SC:'P1',VT:'P1',VA:'P1',WV:'P1'};
+const gid=id=>document.getElementById(id);
+const money=n=>'$'+Math.round(n).toLocaleString();
+function val(id){const el=gid(id);return el?parseFloat(el.value):NaN}
+const CLASS_LABEL={sedan:'Sedan / Coupe',suv:'SUV / Crossover',truck:'Truck / Van'};
+const MULT_DEFAULT={sedan:1.0,suv:1.2,truck:1.4};
+function classMult(){const c=gid('q_vclass').value;const m=val('q_m_'+c);return isNaN(m)?MULT_DEFAULT[c]:m;}
+let quoteBuilt=false, LRI=null, ZIPS=null, laneMap=null, milesManual=false;
 
 function loadQSettings(){try{return JSON.parse(localStorage.getItem(QKEY))||{}}catch(e){return{}}}
-function saveQSettings(){
-  const s={diesel:{},margin:val('q_margin'),cap:val('q_cap'),mpg:val('q_mpg'),vtype:document.getElementById('q_vtype').value,state:document.getElementById('q_state').value};
-  REGS.forEach(r=>s.diesel[r]=val('q_cur_'+r));
-  localStorage.setItem(QKEY,JSON.stringify(s));
-}
-function val(id){const el=document.getElementById(id);return el?parseFloat(el.value):NaN}
-function regionForState(st){return STATE_REGION[st]||'US'}
-function dieselFor(region){const v=val('q_cur_'+region);return isNaN(v)?REG_DEFAULT[region]:v}
+function saveQSettings(){localStorage.setItem(QKEY,JSON.stringify({pzip:gid('q_pzip').value,dzip:gid('q_dzip').value,adjust:gid('q_adjust').value,
+  vclass:gid('q_vclass').value,msedan:gid('q_m_sedan').value,msuv:gid('q_m_suv').value,mtruck:gid('q_m_truck').value}));}
 
+async function loadQuoteData(){
+  const st=gid('q_datastatus');
+  try{
+    if(!LRI){LRI=await (await fetch('lri_data.json')).json();laneMap={};(LRI.lanes||[]).forEach(L=>{laneMap[(L.o+'|'+L.d).toLowerCase()]=L;});}
+    if(!ZIPS){ZIPS=await (await fetch('zips.json')).json();}
+    st.textContent='Lane Index loaded: '+(LRI.lane_count||0).toLocaleString()+' lanes, as of '+LRI.asOf+'. ZIP distances ready.';
+    if(!milesManual)updateMiles();
+    renderQuote();
+  }catch(e){st.textContent='Could not load lri_data.json / zips.json (they must sit next to the app). You can still type miles manually.';}
+}
+function zipInfo(zip){const d=(zip||'').replace(/\D/g,'').slice(0,5);return (ZIPS&&ZIPS[d])?{lat:ZIPS[d][0],lng:ZIPS[d][1],city:ZIPS[d][2],state:ZIPS[d][3]}:null;}
+function haversine(a,b){const R=3958.8,toR=x=>x*Math.PI/180;const dLat=toR(b.lat-a.lat),dLng=toR(b.lng-a.lng);const s=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2;return 2*R*Math.asin(Math.sqrt(s));}
+function estMiles(pi,di){return Math.round(haversine(pi,di)*1.18);}
+function updateMiles(){const pi=zipInfo(gid('q_pzip').value),di=zipInfo(gid('q_dzip').value);if(pi&&di)gid('q_miles').value=estMiles(pi,di);}
+function updateLabels(){
+  const pi=zipInfo(gid('q_pzip').value),di=zipInfo(gid('q_dzip').value);
+  const pz=gid('q_pzip').value.replace(/\D/g,'');
+  gid('q_region_label').textContent=pi?(pi.city+', '+pi.state):(pz.length>=3?'ZIP not found':'enter a ZIP');
+  gid('q_dest_label').textContent=di?(di.city+', '+di.state):' ';
+}
+function onZipChange(){milesManual=false;updateLabels();updateMiles();renderQuote();saveQSettings();}
+function onMilesEdit(){milesManual=true;renderQuote();}
+
+function computeQuote(){
+  if(!LRI)return null;
+  const miles=val('q_miles');const cars=val('q_cars')||1;const adj=(val('q_adjust')||0)/100;
+  if(isNaN(miles)||miles<=0)return null;
+  const pi=zipInfo(gid('q_pzip').value),di=zipInfo(gid('q_dzip').value);
+  let perVeh=null,pcm=null,basis='',range=null;
+  if(pi&&di&&laneMap){
+    const L=laneMap[(pi.city+'|'+di.city).toLowerCase()];
+    if(L){perVeh=(L.recent!=null?L.recent:L.medPrice);pcm=L.medPcm;basis='Your lane: '+L.o+' to '+L.d+' ('+L.n+' past moves)';range=[L.p25,L.p75];}
+  }
+  if(perVeh==null){
+    const stt=pi?pi.state:zipToState(gid('q_pzip').value);
+    const idx=STATE_IDXREG[stt];
+    if(idx&&LRI.regions[idx]){pcm=LRI.regions[idx].now;basis='Regional rate: '+LRI.regions[idx].label+' ($'+pcm.toFixed(2)+'/mi)';}
+    else{pcm=LRI.current_pcm;basis='National rate ($'+pcm.toFixed(2)+'/mi)';}
+    perVeh=miles*pcm;
+  }
+  const cls=gid('q_vclass').value, mult=classMult();
+  perVeh=perVeh*mult*(1+adj);
+  return {total:perVeh*cars,perVeh,cars,miles,basis,pcm,range,adj,cls,mult};
+}
 function buildQuoteUI(){
   if(quoteBuilt)return;quoteBuilt=true;
-  const saved=loadQSettings();
-  // state dropdown
-  const ss=document.getElementById('q_state');
-  ss.innerHTML='<option value="">— Select state —</option>'+STATES.map(s=>`<option value="${s}">${s}</option>`).join('');
-  // region diesel inputs
-  document.getElementById('q_regPrices').innerHTML=REGS.map(r=>{
-    const v=(saved.diesel&&saved.diesel[r]!=null)?saved.diesel[r]:REG_DEFAULT[r];
-    return `<div class="qfield"><label>${REG_LABEL[r]}</label><input type="number" step="0.01" id="q_cur_${r}" value="${Number(v).toFixed(2)}"></div>`;
-  }).join('');
-  // restore saved params
-  if(saved.margin!=null&&!isNaN(saved.margin))document.getElementById('q_margin').value=saved.margin;
-  if(saved.vtype){document.getElementById('q_vtype').value=saved.vtype;}
-  if(saved.cap!=null&&!isNaN(saved.cap))document.getElementById('q_cap').value=saved.cap;
-  if(saved.mpg!=null&&!isNaN(saved.mpg))document.getElementById('q_mpg').value=saved.mpg;
-  if(saved.state){document.getElementById('q_state').value=saved.state;}
-  onStateChange(true);
-  // live recalc on any input
-  ['q_state','q_miles','q_cars','q_cost','q_baseline','q_cap','q_mpg','q_margin'].concat(REGS.map(r=>'q_cur_'+r))
-    .forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',()=>{renderQuote();saveQSettings();})});
+  const s=loadQSettings();
+  if(s.pzip)gid('q_pzip').value=s.pzip;
+  if(s.dzip)gid('q_dzip').value=s.dzip;
+  if(s.adjust!=null&&s.adjust!=='')gid('q_adjust').value=s.adjust;
+  if(s.vclass)gid('q_vclass').value=s.vclass;
+  if(s.msedan)gid('q_m_sedan').value=s.msedan;
+  if(s.msuv)gid('q_m_suv').value=s.msuv;
+  if(s.mtruck)gid('q_m_truck').value=s.mtruck;
+  ['q_cars','q_adjust','q_m_sedan','q_m_suv','q_m_truck'].forEach(id=>{const el=gid(id);if(el)el.addEventListener('input',()=>{renderQuote();saveQSettings();});});
+  updateLabels();
+  loadQuoteData();
 }
-function onStateChange(skipRender){
-  const st=document.getElementById('q_state').value;
-  const reg=regionForState(st);
-  document.getElementById('q_region_label').textContent=REG_LABEL[reg];
-  if(!skipRender)renderQuote();
-}
-function onVtypeChange(){
-  const t=VTYPE[document.getElementById('q_vtype').value];
-  document.getElementById('q_cap').value=t.cap;
-  document.getElementById('q_mpg').value=t.mpg;
-  renderQuote();saveQSettings();
-}
-
-// RateBot formula (matches projectLane in the re-quoting tool)
-function computeQuote(){
-  const miles=val('q_miles'),cost=val('q_cost');
-  const cars=val('q_cars')||1,cap=val('q_cap')||9,mpg=val('q_mpg')||6.5;
-  const margin=(val('q_margin')||0)/100;
-  const reg=regionForState(document.getElementById('q_state').value);
-  const dieselNow=dieselFor(reg);
-  let baseline=val('q_baseline');if(isNaN(baseline))baseline=dieselNow; // blank = no fuel adjustment
-  if(isNaN(miles)||isNaN(cost))return null;
-  const share=cars/cap;
-  const adder=share*(miles/mpg)*(dieselNow-baseline);
-  const projected=cost+adder;
-  const quote=margin<1?projected/(1-margin):projected;
-  return {adder,projected,quote,perCar:quote/Math.max(1,cars),dieselNow,reg,cars};
-}
-function money(n){return '$'+Math.round(n).toLocaleString()}
 function renderQuote(){
   buildQuoteUI();
-  const r=computeQuote();
-  const out=document.getElementById('q_out'),hint=document.getElementById('q_hint');
-  if(!r){out.style.display='none';hint.style.display='block';return}
+  const r=computeQuote();const out=gid('q_out'),hint=gid('q_hint');
+  if(!r){out.style.display='none';hint.style.display='block';hint.textContent=LRI?'Enter pickup and delivery ZIP to see a quote.':'Loading your Lane Index...';return;}
   out.style.display='block';hint.style.display='none';
-  document.getElementById('q_quote').textContent=money(r.quote);
-  document.getElementById('q_percar').textContent=r.cars>1?(money(r.perCar)+' per vehicle · '+r.cars+' vehicles'):'';
-  document.getElementById('q_o_base').textContent=money(val('q_cost'));
-  document.getElementById('q_o_adder').textContent=(r.adder<0?'-':'')+money(Math.abs(r.adder))+' ('+REG_LABEL[r.reg]+' @ $'+r.dieselNow.toFixed(2)+')';
-  document.getElementById('q_o_proj').textContent=money(r.projected);
-  document.getElementById('q_o_margin').textContent=(val('q_margin')||0)+'%';
+  gid('q_quote').textContent=money(r.total);
+  gid('q_percar').textContent=r.cars>1?(money(r.perVeh)+' per vehicle x '+r.cars+' vehicles'):'';
+  gid('q_o_basis').textContent=r.basis+(r.adj?(' · '+(r.adj>0?'+':'')+Math.round(r.adj*100)+'% adj'):'');
+  gid('q_o_class').textContent=CLASS_LABEL[r.cls]+' (x'+r.mult.toFixed(2)+')';
+  gid('q_o_miles').textContent=r.miles.toLocaleString()+' mi'+(milesManual?'':' (est. from ZIPs)');
+  gid('q_o_pcm').textContent='$'+(r.pcm||0).toFixed(2)+' /vehicle-mile';
+  const rw=gid('q_o_rangewrap');
+  if(r.range){rw.style.display='';gid('q_o_range').textContent=money(r.range[0])+' to '+money(r.range[1])+' per vehicle';}else rw.style.display='none';
 }
 function quoteSummaryText(){
   const r=computeQuote();if(!r)return '';
-  const st=document.getElementById('q_state').value||'?';
-  return `Quote: ${money(r.quote)}${r.cars>1?(' ('+money(r.perCar)+'/vehicle x '+r.cars+')'):''}\n`+
-    `Lane: ${st} origin, ${val('q_miles')||0} mi · ${r.cars} vehicle(s)\n`+
-    `Base carrier cost ${money(val('q_cost'))} + fuel adder ${money(r.adder)} (${REG_LABEL[r.reg]} diesel $${r.dieselNow.toFixed(2)}), margin ${(val('q_margin')||0)}%`;
+  const pi=zipInfo(gid('q_pzip').value),di=zipInfo(gid('q_dzip').value);
+  const pz=gid('q_pzip').value||'?',dz=gid('q_dzip').value||'?';
+  const pl=pi?(' ('+pi.city+', '+pi.state+')'):'',dl=di?(' ('+di.city+', '+di.state+')'):'';
+  return `Quote: ${money(r.total)}${r.cars>1?(' ('+money(r.perVeh)+'/vehicle x '+r.cars+')'):''}\n`+
+    `Lane: ${pz}${pl} to ${dz}${dl}, ${r.miles.toLocaleString()} mi · ${r.cars} ${CLASS_LABEL[r.cls]}\n`+
+    `Basis: ${r.basis} (vehicle x${r.mult.toFixed(2)})`;
 }
-function copyQuote(){
-  const t=quoteSummaryText();if(!t){toast('Enter miles and base cost first',' err');return}
-  navigator.clipboard.writeText(t).then(()=>toast('Quote copied','ok'),()=>toast('Copy failed',' err'));
-}
-function quoteToOrder(){
-  const t=quoteSummaryText();if(!t){toast('Enter miles and base cost first',' err');return}
-  const el=document.getElementById('special');
-  el.value=(el.value?el.value+'\n\n':'')+t;
-  toast('Added to order Special Instructions','ok');
-  showView('new');
-}
+function copyQuote(){const t=quoteSummaryText();if(!t){toast('Enter pickup and delivery ZIP first',' err');return}navigator.clipboard.writeText(t).then(()=>toast('Quote copied','ok'),()=>toast('Copy failed',' err'));}
+function quoteToOrder(){const t=quoteSummaryText();if(!t){toast('Enter pickup and delivery ZIP first',' err');return}const el=gid('special');el.value=(el.value?el.value+'\n\n':'')+t;toast('Added to order Special Instructions','ok');showView('new');}
 function pullFromOrder(){
   buildQuoteUI();
-  const st=(document.getElementById('pickup_state').value||'').trim().toUpperCase();
-  if(st&&STATE_REGION[st]!=null){document.getElementById('q_state').value=st;onStateChange(true);}
-  const n=document.querySelectorAll('#vehicles .vehicle').length;
-  if(n>0)document.getElementById('q_cars').value=n;
+  const pz=(gid('pickup_zip').value||'').trim(),dz=(gid('delivery_zip').value||'').trim();
+  if(pz)gid('q_pzip').value=pz;
+  if(dz)gid('q_dzip').value=dz;
+  milesManual=false;updateLabels();updateMiles();
+  const n=document.querySelectorAll('#vehicles .vehicle').length;if(n>0)gid('q_cars').value=n;
   renderQuote();saveQSettings();
-  toast('Pulled origin and vehicle count from order','ok');
+  toast('Pulled ZIPs and vehicle count from order','ok');
 }
+
 /* ================= CLOUD SYNC + AUTH (Supabase) ================= */
 const SB_URL='https://dibqimcpxsdqttneaynq.supabase.co';
 const SB_KEY='sb_publishable_RVL5N8MsK-yGBhcWDYfxrw_1lJXyPJC';
