@@ -390,6 +390,13 @@
           <label>Number of vehicles</label>
           <input type="number" id="q_cars" step="1" min="1" value="1">
         </div>
+        <div class="qfield">
+          <label>Remote pickup or delivery</label>
+          <div style="display:flex;align-items:center;gap:8px;height:38px">
+            <input type="checkbox" id="q_remote" style="width:20px;height:20px;accent-color:var(--accent)" onchange="renderQuote();saveQSettings();">
+            <span class="hint" style="margin:0">Tick for hard-to-service rural lanes</span>
+          </div>
+        </div>
       </div>
 
       <details class="diesel">
@@ -403,6 +410,7 @@
           <div class="qfield"><label>Sedan multiplier</label><input type="number" step="0.01" id="q_m_sedan" value="1.00"></div>
           <div class="qfield"><label>SUV multiplier</label><input type="number" step="0.01" id="q_m_suv" value="1.20"></div>
           <div class="qfield"><label>Truck/Van multiplier</label><input type="number" step="0.01" id="q_m_truck" value="1.40"></div>
+          <div class="qfield"><label>Remote surcharge ($/veh)</label><input type="number" step="25" id="q_remote_amt" value="250"></div>
         </div>
         <p class="hint" id="q_datastatus" style="margin:4px 0 0">Lane Index: loading…</p>
       </details>
@@ -414,6 +422,8 @@
         <div class="line"><span>Vehicle class</span><b id="q_o_class">—</b></div>
         <div class="line"><span>Lane miles</span><b id="q_o_miles">—</b></div>
         <div class="line"><span>Rate per vehicle-mile</span><b id="q_o_pcm">—</b></div>
+        <div class="line"><span>Diesel adjustment</span><b id="q_o_diesel">—</b></div>
+        <div class="line" id="q_o_remotewrap" style="display:none"><span>Remote area surcharge</span><b id="q_o_remote">—</b></div>
         <div class="line" id="q_o_rangewrap" style="display:none"><span>Typical range on this lane</span><b id="q_o_range">—</b></div>
       </div>
       <p class="hint" id="q_hint" style="margin-top:14px">Enter pickup and delivery ZIP to see a quote.</p>
@@ -1028,36 +1038,63 @@ function download(name,content,type){
   const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);
 }
 
-/* ================= QUOTE (RateBot Lane Index) ================= */
+/* ================= QUOTE (Lane Index + live EIA diesel) ================= */
 const QKEY='orderEntry.quoteSettings.v1';
+const EIA_KEY='p7uqRLYoAWsTavzHoqNtHsDw4jUezJwp7jr5xnrQ';
 const ZIP_RANGES=[[5,5,'NY'],[10,27,'MA'],[28,29,'RI'],[30,38,'NH'],[39,49,'ME'],[50,59,'VT'],[60,69,'CT'],[70,89,'NJ'],[100,149,'NY'],[150,196,'PA'],[197,199,'DE'],[200,205,'DC'],[206,219,'MD'],[220,246,'VA'],[247,268,'WV'],[270,289,'NC'],[290,299,'SC'],[300,319,'GA'],[320,349,'FL'],[350,369,'AL'],[370,385,'TN'],[386,397,'MS'],[398,399,'GA'],[400,427,'KY'],[430,459,'OH'],[460,479,'IN'],[480,499,'MI'],[500,528,'IA'],[530,549,'WI'],[550,567,'MN'],[570,577,'SD'],[580,588,'ND'],[590,599,'MT'],[600,629,'IL'],[630,658,'MO'],[660,679,'KS'],[680,693,'NE'],[700,714,'LA'],[716,729,'AR'],[730,749,'OK'],[750,799,'TX'],[800,816,'CO'],[820,831,'WY'],[832,838,'ID'],[840,847,'UT'],[850,865,'AZ'],[870,884,'NM'],[889,898,'NV'],[900,961,'CA'],[967,968,'HI'],[970,979,'OR'],[980,994,'WA'],[995,999,'AK']];
 function zipToState(zip){const d=(zip||'').replace(/\D/g,'');if(d.length<3)return '';const p=parseInt(d.slice(0,3),10);for(const r of ZIP_RANGES){if(p>=r[0]&&p<=r[1])return r[2];}return '';}
-// state -> Lane Index region key (P1 East, P2 Midwest, P4 Rocky Mtn, P5X West, CA). Gulf/unknown -> '' (national rate).
+// state -> Lane Index rate region (CA,P1,P2,P4,P5X). Gulf/unknown -> '' (national rate).
 const STATE_IDXREG={CA:'CA',AZ:'P5X',NV:'P5X',OR:'P5X',WA:'P5X',AK:'P5X',HI:'P5X',CO:'P4',ID:'P4',MT:'P4',UT:'P4',WY:'P4',
   IL:'P2',IN:'P2',IA:'P2',KS:'P2',KY:'P2',MI:'P2',MN:'P2',MO:'P2',NE:'P2',ND:'P2',OH:'P2',OK:'P2',SD:'P2',TN:'P2',WI:'P2',
   CT:'P1',DE:'P1',DC:'P1',FL:'P1',GA:'P1',ME:'P1',MD:'P1',MA:'P1',NH:'P1',NJ:'P1',NY:'P1',NC:'P1',PA:'P1',RI:'P1',SC:'P1',VT:'P1',VA:'P1',WV:'P1'};
+const GULF=new Set(['AL','AR','LA','MS','NM','TX']);
+// EIA diesel: regions and 2026-06 baseline ($/gal); current pulled live from EIA
+const DIESEL_BASE={US:5.35,P1:5.237,P2:5.392,P3:4.90,P4:5.331,CA:7.051,P5X:5.832};
+const REG_DLABEL={US:'US',P1:'East',P2:'Midwest',P3:'Gulf',P4:'Rocky Mtn',CA:'California',P5X:'West'};
+function regionForDieselState(st){if(STATE_IDXREG[st])return STATE_IDXREG[st];if(GULF.has(st))return 'P3';return 'US';}
+const CLASS_CAPMPG={sedan:[9,6.5],suv:[7,6.2],truck:[6,5.8]};
+// distance decay fit on your lanes: pcm = A*miles^B, clamped to your dense data range
+const POW_A=18.5678,POW_B=-0.521,PCM_REF=18.5678*Math.pow(450,-0.521);
+function distFactor(mi){const m=Math.max(250,Math.min(1500,mi));return (POW_A*Math.pow(m,POW_B))/PCM_REF;}
 const gid=id=>document.getElementById(id);
-const money=n=>'$'+Math.round(n).toLocaleString();
+const money=n=>(n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString();
 function val(id){const el=gid(id);return el?parseFloat(el.value):NaN}
 const CLASS_LABEL={sedan:'Sedan / Coupe',suv:'SUV / Crossover',truck:'Truck / Van'};
 const MULT_DEFAULT={sedan:1.0,suv:1.2,truck:1.4};
 function classMult(){const c=gid('q_vclass').value;const m=val('q_m_'+c);return isNaN(m)?MULT_DEFAULT[c]:m;}
-let quoteBuilt=false, LRI=null, ZIPS=null, laneMap=null, milesManual=false;
+let quoteBuilt=false, LRI=null, ZIPS=null, laneMap=null, milesManual=false, DIESEL_NOW=null, DIESEL_PERIOD='';
 
 function loadQSettings(){try{return JSON.parse(localStorage.getItem(QKEY))||{}}catch(e){return{}}}
 function saveQSettings(){localStorage.setItem(QKEY,JSON.stringify({pzip:gid('q_pzip').value,dzip:gid('q_dzip').value,adjust:gid('q_adjust').value,
-  vclass:gid('q_vclass').value,msedan:gid('q_m_sedan').value,msuv:gid('q_m_suv').value,mtruck:gid('q_m_truck').value}));}
+  vclass:gid('q_vclass').value,msedan:gid('q_m_sedan').value,msuv:gid('q_m_suv').value,mtruck:gid('q_m_truck').value,remoteAmt:gid('q_remote_amt').value}));}
 
 async function loadQuoteData(){
-  const st=gid('q_datastatus');
   try{
     if(!LRI){LRI=await (await fetch('lri_data.json')).json();laneMap={};(LRI.lanes||[]).forEach(L=>{laneMap[(L.o+'|'+L.d).toLowerCase()]=L;});}
     if(!ZIPS){ZIPS=await (await fetch('zips.json')).json();}
-    st.textContent='Lane Index loaded: '+(LRI.lane_count||0).toLocaleString()+' lanes, as of '+LRI.asOf+'. ZIP distances ready.';
     if(!milesManual)updateMiles();
     renderQuote();
-  }catch(e){st.textContent='Could not load lri_data.json / zips.json (they must sit next to the app). You can still type miles manually.';}
+  }catch(e){updateDieselStatus('Could not load lri_data.json / zips.json (they must sit next to the app).');}
+  loadDiesel();
 }
+async function loadDiesel(){
+  try{const c=JSON.parse(localStorage.getItem('oe.diesel')||'null');
+    if(c&&Date.now()-c.t<86400000){DIESEL_NOW=c.d;DIESEL_PERIOD=c.period;updateDieselStatus();renderQuote();return;}}catch(e){}
+  try{
+    const url='https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key='+EIA_KEY+'&data[0]=value&facets[product][]=EPD2D&frequency=weekly&sort[0][column]=period&sort[0][direction]=desc&length=40';
+    const j=await (await fetch(url)).json();
+    const M={NUS:'US',R10:'P1',R20:'P2',R30:'P3',R40:'P4',SCA:'CA',R5XCA:'P5X'};
+    const d={};let period='';
+    (j.response.data||[]).forEach(r=>{const k=M[r.duoarea];if(k&&d[k]==null){d[k]=parseFloat(r.value);if(!period)period=r.period;}});
+    if(Object.keys(d).length){DIESEL_NOW=d;DIESEL_PERIOD=period;localStorage.setItem('oe.diesel',JSON.stringify({t:Date.now(),d,period}));}
+  }catch(e){DIESEL_NOW=null;}
+  updateDieselStatus();renderQuote();
+}
+function dieselFor(dreg){return (DIESEL_NOW&&DIESEL_NOW[dreg]!=null)?DIESEL_NOW[dreg]:DIESEL_BASE[dreg];}
+function updateDieselStatus(msg){const el=gid('q_datastatus');if(!el)return;
+  if(msg){el.textContent=msg;return;}
+  const li=LRI?('Lane Index: '+(LRI.lane_count||0).toLocaleString()+' lanes. '):'';
+  el.textContent=li+(DIESEL_NOW?('Diesel: live from EIA, week of '+DIESEL_PERIOD+'.'):'Diesel: using June 2026 baseline (live fetch unavailable).');}
 function zipInfo(zip){const d=(zip||'').replace(/\D/g,'').slice(0,5);return (ZIPS&&ZIPS[d])?{lat:ZIPS[d][0],lng:ZIPS[d][1],city:ZIPS[d][2],state:ZIPS[d][3]}:null;}
 function haversine(a,b){const R=3958.8,toR=x=>x*Math.PI/180;const dLat=toR(b.lat-a.lat),dLng=toR(b.lng-a.lng);const s=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2;return 2*R*Math.asin(Math.sqrt(s));}
 function estMiles(pi,di){return Math.round(haversine(pi,di)*1.18);}
@@ -1066,7 +1103,7 @@ function updateLabels(){
   const pi=zipInfo(gid('q_pzip').value),di=zipInfo(gid('q_dzip').value);
   const pz=gid('q_pzip').value.replace(/\D/g,'');
   gid('q_region_label').textContent=pi?(pi.city+', '+pi.state):(pz.length>=3?'ZIP not found':'enter a ZIP');
-  gid('q_dest_label').textContent=di?(di.city+', '+di.state):' ';
+  gid('q_dest_label').textContent=di?(di.city+', '+di.state):' ';
 }
 function onZipChange(){milesManual=false;updateLabels();updateMiles();renderQuote();saveQSettings();}
 function onMilesEdit(){milesManual=true;renderQuote();}
@@ -1076,21 +1113,28 @@ function computeQuote(){
   const miles=val('q_miles');const cars=val('q_cars')||1;const adj=(val('q_adjust')||0)/100;
   if(isNaN(miles)||miles<=0)return null;
   const pi=zipInfo(gid('q_pzip').value),di=zipInfo(gid('q_dzip').value);
-  let perVeh=null,pcm=null,basis='',range=null;
+  const st=pi?pi.state:zipToState(gid('q_pzip').value);
+  const cls=gid('q_vclass').value, mult=classMult();
+  let perVeh=null,pcm=null,basis='',range=null,exact=false;
   if(pi&&di&&laneMap){
     const L=laneMap[(pi.city+'|'+di.city).toLowerCase()];
-    if(L){perVeh=(L.recent!=null?L.recent:L.medPrice);pcm=L.medPcm;basis='Your lane: '+L.o+' to '+L.d+' ('+L.n+' past moves)';range=[L.p25,L.p75];}
+    if(L){perVeh=(L.recent!=null?L.recent:L.medPrice);pcm=L.medPcm;basis='Your lane: '+L.o+' to '+L.d+' ('+L.n+' past moves)';range=[L.p25,L.p75];exact=true;}
   }
   if(perVeh==null){
-    const stt=pi?pi.state:zipToState(gid('q_pzip').value);
-    const idx=STATE_IDXREG[stt];
-    if(idx&&LRI.regions[idx]){pcm=LRI.regions[idx].now;basis='Regional rate: '+LRI.regions[idx].label+' ($'+pcm.toFixed(2)+'/mi)';}
-    else{pcm=LRI.current_pcm;basis='National rate ($'+pcm.toFixed(2)+'/mi)';}
-    perVeh=miles*pcm;
+    const idx=STATE_IDXREG[st];
+    const regBase=(idx&&LRI.regions[idx])?LRI.regions[idx].now:LRI.current_pcm;
+    pcm=regBase*distFactor(miles);
+    perVeh=pcm*miles;
+    basis=(idx&&LRI.regions[idx]?('Regional: '+LRI.regions[idx].label):'National')+' rate, distance-adjusted';
   }
-  const cls=gid('q_vclass').value, mult=classMult();
-  perVeh=perVeh*mult*(1+adj);
-  return {total:perVeh*cars,perVeh,cars,miles,basis,pcm,range,adj,cls,mult};
+  perVeh=perVeh*mult;
+  const dreg=regionForDieselState(st);
+  const dn=dieselFor(dreg), db=DIESEL_BASE[dreg]||dn;
+  const cm=CLASS_CAPMPG[cls]||[9,6.5];
+  const fuelAdj=(1/cm[0])*(miles/cm[1])*(dn-db);
+  const remote=gid('q_remote').checked, remoteAmt=remote?(val('q_remote_amt')||0):0;
+  perVeh=(perVeh+fuelAdj+remoteAmt)*(1+adj);
+  return {total:perVeh*cars,perVeh,cars,miles,basis,pcm,range,adj,cls,mult,exact,dn,db,dreg,fuelAdj,remote,remoteAmt};
 }
 function buildQuoteUI(){
   if(quoteBuilt)return;quoteBuilt=true;
@@ -1102,7 +1146,8 @@ function buildQuoteUI(){
   if(s.msedan)gid('q_m_sedan').value=s.msedan;
   if(s.msuv)gid('q_m_suv').value=s.msuv;
   if(s.mtruck)gid('q_m_truck').value=s.mtruck;
-  ['q_cars','q_adjust','q_m_sedan','q_m_suv','q_m_truck'].forEach(id=>{const el=gid(id);if(el)el.addEventListener('input',()=>{renderQuote();saveQSettings();});});
+  if(s.remoteAmt)gid('q_remote_amt').value=s.remoteAmt;
+  ['q_cars','q_adjust','q_m_sedan','q_m_suv','q_m_truck','q_remote_amt'].forEach(id=>{const el=gid(id);if(el)el.addEventListener('input',()=>{renderQuote();saveQSettings();});});
   updateLabels();
   loadQuoteData();
 }
@@ -1117,6 +1162,9 @@ function renderQuote(){
   gid('q_o_class').textContent=CLASS_LABEL[r.cls]+' (x'+r.mult.toFixed(2)+')';
   gid('q_o_miles').textContent=r.miles.toLocaleString()+' mi'+(milesManual?'':' (est. from ZIPs)');
   gid('q_o_pcm').textContent='$'+(r.pcm||0).toFixed(2)+' /vehicle-mile';
+  gid('q_o_diesel').textContent=(r.fuelAdj>=0?'+':'')+money(r.fuelAdj)+'/veh ('+REG_DLABEL[r.dreg]+' diesel $'+r.dn.toFixed(2)+(Math.abs(r.dn-r.db)>0.005?(' vs $'+r.db.toFixed(2)+' base'):'')+')';
+  const remw=gid('q_o_remotewrap');
+  if(r.remote&&r.remoteAmt){remw.style.display='';gid('q_o_remote').textContent='+'+money(r.remoteAmt)+'/veh';}else remw.style.display='none';
   const rw=gid('q_o_rangewrap');
   if(r.range){rw.style.display='';gid('q_o_range').textContent=money(r.range[0])+' to '+money(r.range[1])+' per vehicle';}else rw.style.display='none';
 }
@@ -1127,7 +1175,7 @@ function quoteSummaryText(){
   const pl=pi?(' ('+pi.city+', '+pi.state+')'):'',dl=di?(' ('+di.city+', '+di.state+')'):'';
   return `Quote: ${money(r.total)}${r.cars>1?(' ('+money(r.perVeh)+'/vehicle x '+r.cars+')'):''}\n`+
     `Lane: ${pz}${pl} to ${dz}${dl}, ${r.miles.toLocaleString()} mi · ${r.cars} ${CLASS_LABEL[r.cls]}\n`+
-    `Basis: ${r.basis} (vehicle x${r.mult.toFixed(2)})`;
+    `Basis: ${r.basis} (vehicle x${r.mult.toFixed(2)}); ${REG_DLABEL[r.dreg]} diesel $${r.dn.toFixed(2)}${r.remote&&r.remoteAmt?('; remote +'+money(r.remoteAmt)+'/veh'):''}`;
 }
 function copyQuote(){const t=quoteSummaryText();if(!t){toast('Enter pickup and delivery ZIP first',' err');return}navigator.clipboard.writeText(t).then(()=>toast('Quote copied','ok'),()=>toast('Copy failed',' err'));}
 function quoteToOrder(){const t=quoteSummaryText();if(!t){toast('Enter pickup and delivery ZIP first',' err');return}const el=gid('special');el.value=(el.value?el.value+'\n\n':'')+t;toast('Added to order Special Instructions','ok');showView('new');}
