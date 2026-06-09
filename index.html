@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order Entry</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
+    --line:#d8dee8; --accent:#1d6fb8; --accent-dark:#155389;
+    --ok:#15803d; --okbg:#dcfce7; --danger:#b91c1c; --dangerbg:#fee2e2;
+    --shadow:0 1px 3px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.04);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45}
+  header{background:#0f172a;color:#fff;padding:14px 22px;display:flex;align-items:center;gap:18px;position:sticky;top:0;z-index:50}
+  header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.2px}
+  nav{display:flex;gap:4px;margin-left:8px}
+  nav button{background:transparent;color:#cbd5e1;border:0;padding:8px 14px;border-radius:7px;cursor:pointer;font-size:14px;font-weight:500}
+  nav button:hover{background:#1e293b;color:#fff}
+  nav button.active{background:var(--accent);color:#fff}
+  .spacer{flex:1}
+  .pill{font-size:12px;color:#94a3b8;background:#1e293b;padding:5px 10px;border-radius:20px}
+  .syncpill{font-size:12px;padding:5px 10px;border-radius:20px;background:#1e293b;color:#94a3b8}
+  .syncpill.ok{color:#5fd39e} .syncpill.busy{color:#f3c969} .syncpill.err{color:#fca5a5}
+  .logout{background:transparent;color:#cbd5e1;border:1px solid #334155;padding:5px 12px;border-radius:7px;cursor:pointer;font-size:13px}
+  .logout:hover{background:#1e293b;color:#fff}
+  #loginOverlay{position:fixed;inset:0;background:#0f172a;z-index:1000;display:flex;align-items:center;justify-content:center}
+  #loginOverlay .box{background:#fff;border-radius:14px;padding:34px 32px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+  #loginOverlay h2{margin:0 0 4px;font-size:20px;color:var(--ink)}
+  #loginOverlay p{margin:0 0 20px;color:var(--muted);font-size:13px}
+  #loginOverlay label{display:block;font-size:12px;font-weight:600;color:#374151;margin:12px 0 5px}
+  #loginOverlay input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px}
+  #loginOverlay button{width:100%;margin-top:20px;background:var(--accent);color:#fff;border:0;padding:11px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}
+  #loginOverlay button:hover{background:var(--accent-dark)}
+  #loginOverlay button:disabled{opacity:.6;cursor:default}
+  #loginErr{color:var(--danger);font-size:13px;margin-top:12px;min-height:16px}
+  main{max-width:980px;margin:26px auto;padding:0 20px 80px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:24px 28px;margin-bottom:22px}
+  h2.section{color:var(--accent);font-size:17px;font-weight:600;margin:0 0 4px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+  .row{display:grid;grid-template-columns:160px 1fr;align-items:center;gap:14px;margin-bottom:12px}
+  .row label{text-align:right;font-weight:600;color:#374151;font-size:14px}
+  .row .field{display:flex;gap:8px;align-items:center}
+  input[type=text],input[type=tel],input[type=email],input[type=date],input[type=number],select,textarea{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;background:#fff;color:var(--ink)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,111,184,.15)}
+  textarea{min-height:90px;resize:vertical}
+  .checkrow{grid-template-columns:160px 1fr}
+  .checkrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+  .btn{background:var(--accent);color:#fff;border:0;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
+  .btn:hover{background:var(--accent-dark)}
+  .btn.secondary{background:#eef2f7;color:#334155;border:1px solid var(--line)}
+  .btn.secondary:hover{background:#e2e8f0}
+  .btn.danger{background:var(--dangerbg);color:var(--danger);border:1px solid #fca5a5}
+  .btn.danger:hover{background:#fecaca}
+  .btn.sm{padding:6px 12px;font-size:13px}
+  .autofill{display:flex;gap:8px;align-items:center}
+  .autofill select{max-width:340px}
+  .vehicle{border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:14px;background:#fbfcfe;position:relative}
+  .vehicle h4{margin:0 0 12px;font-size:14px;color:#334155}
+  .vehicle .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .vehicle .grid .one{display:flex;flex-direction:column;gap:4px}
+  .vehicle .grid .one label{font-size:12px;color:var(--muted);font-weight:600;text-align:left}
+  .vehicle .remove{position:absolute;top:12px;right:12px}
+  .actions{display:flex;gap:12px;justify-content:center;padding:6px 0 0}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:12px 22px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:100}
+  .toast.show{opacity:1}
+  .toast.ok{background:var(--ok)} .toast.err{background:var(--danger)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  tbody tr:hover{background:#f8fafc;cursor:pointer}
+  .badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px}
+  .badge.hold{background:var(--dangerbg);color:var(--danger)}
+  .badge.enc{background:#e0e7ff;color:#3730a3}
+  .toolbar{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+  .toolbar input[type=text]{max-width:280px}
+  .empty{text-align:center;color:var(--muted);padding:50px 20px}
+  .meta{font-size:12px;color:var(--muted)}
+  .fileitem{font-size:13px;color:#334155;background:#eef2f7;padding:4px 10px;border-radius:6px;display:inline-flex;gap:8px;align-items:center;margin:3px 6px 3px 0}
+  .fileitem button{border:0;background:none;color:var(--danger);cursor:pointer;font-size:14px;line-height:1}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .savebar{position:sticky;bottom:0;background:rgba(244,246,249,.92);backdrop-filter:blur(4px);border-top:1px solid var(--line);padding:14px 0;margin-top:10px}
+  .backup-note{background:#fffbeb;border:1px solid #fde68a;color:#92400e;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:18px}
+  .qgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px 22px}
+  .qfield{display:flex;flex-direction:column;gap:5px}
+  .qfield label{font-weight:600;color:#374151;font-size:13px}
+  .qfield .hint{margin-top:0}
+  .quote-out{background:#0f172a;color:#fff;border-radius:12px;padding:22px 26px;margin-top:8px}
+  .quote-out .big{font-size:34px;font-weight:700;letter-spacing:.5px}
+  .quote-out .percar{font-size:15px;color:#93c5fd;margin-top:2px}
+  .quote-out .line{display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid #1e293b;font-size:14px;color:#cbd5e1}
+  .quote-out .line b{color:#fff;font-weight:600}
+  .qhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .reg-badge{font-size:12px;color:var(--accent);font-weight:600}
+  details.diesel{margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:0 14px}
+  details.diesel summary{cursor:pointer;font-weight:600;font-size:13px;color:#374151;padding:12px 0}
+  details.diesel .reg-prices{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 14px;padding:0 0 14px}
+  details.diesel .reg-prices .qfield label{font-size:11px;color:var(--muted)}
+  @media (max-width:680px){.row,.checkrow{grid-template-columns:1fr}.row label{text-align:left}.vehicle .grid{grid-template-columns:1fr}.qgrid{grid-template-columns:1fr}details.diesel .reg-prices{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div id="loginOverlay">
+  <form class="box" id="loginForm">
+    <h2>Order Entry</h2>
+    <p>Sign in to access your CRM.</p>
+    <label for="loginEmail">Email</label>
+    <input type="email" id="loginEmail" autocomplete="username" required>
+    <label for="loginPass">Password</label>
+    <input type="password" id="loginPass" autocomplete="current-password" required>
+    <button type="submit" id="loginBtn">Sign in</button>
+    <div id="loginErr"></div>
+  </form>
+</div>
+
+<header>
+  <h1>Order Entry</h1>
+  <nav>
+    <button id="nav-new" class="active" onclick="showView('new')">New Order</button>
+    <button id="nav-list" onclick="showView('list')">All Orders</button>
+    <button id="nav-customers" onclick="showView('customers')">Customers</button>
+    <button id="nav-contacts" onclick="showView('contacts')">Contacts</button>
+    <button id="nav-quote" onclick="showView('quote')">Quote</button>
+    <button id="nav-backup" onclick="showView('backup')">Backup &amp; Export</button>
+  </nav>
+  <div class="spacer"></div>
+  <span class="pill" id="countPill">0 orders</span>
+  <span class="syncpill" id="syncPill" title="Cloud sync status">Local</span>
+  <button class="logout" id="logoutBtn" onclick="doLogout()" style="display:none">Log out</button>
+</header>
+
+<main>
+  <!-- ================= NEW / EDIT ORDER ================= -->
+  <div id="view-new">
+    <form id="orderForm" autocomplete="off">
+      <input type="hidden" id="editId" value="">
+
+      <!-- BILLING -->
+      <div class="card">
+        <h2 class="section">Billing Information</h2>
+        <div class="row">
+          <label>Autofill</label>
+          <div class="autofill">
+            <select id="af-billing"><option value="">— Saved billing locations —</option></select>
+            <button type="button" class="btn secondary sm" onclick="applyPreset('billing')">Fill</button>
+            <button type="button" class="btn secondary sm" onclick="savePreset('billing')">Save current</button>
+          </div>
+        </div>
+        <div class="row">
+          <label>From customer</label>
+          <div class="autofill">
+            <select id="af-customer-billing"><option value="">— Saved customers —</option></select>
+            <button type="button" class="btn secondary sm" onclick="fillFromCustomer('billing')">Fill</button>
+          </div>
+        </div>
+        <div class="row"><label>Name</label><input type="text" id="billing_name"></div>
+        <div class="row"><label>Address</label><input type="text" id="billing_address"></div>
+        <div class="row"><label>Unit</label><input type="text" id="billing_unit"></div>
+        <div class="row"><label>City</label><input type="text" id="billing_city"></div>
+        <div class="row"><label>State</label><input type="text" id="billing_state"></div>
+        <div class="row"><label>Zip</label><input type="text" id="billing_zip"></div>
+        <div class="row"><label>Contact Name</label><input type="text" id="billing_contact"></div>
+        <div class="row"><label>Contact Phone</label><input type="tel" id="billing_phone"></div>
+        <div class="row"><label>Email</label><input type="email" id="billing_email"></div>
+        <div class="row"><label>Billing Location Note</label><textarea id="billing_note"></textarea></div>
+      </div>
+
+      <!-- PICKUP -->
+      <div class="card">
+        <h2 class="section">Pickup Information</h2>
+        <div class="row">
+          <label>Autofill</label>
+          <div class="autofill">
+            <select id="af-pickup"><option value="">— Saved pickup locations —</option></select>
+            <button type="button" class="btn secondary sm" onclick="applyPreset('pickup')">Fill</button>
+            <button type="button" class="btn secondary sm" onclick="savePreset('pickup')">Save current</button>
+          </div>
+        </div>
+        <div class="row">
+          <label>From customer</label>
+          <div class="autofill">
+            <select id="af-customer-pickup"><option value="">— Saved customers —</option></select>
+            <button type="button" class="btn secondary sm" onclick="fillFromCustomer('pickup')">Fill</button>
+          </div>
+        </div>
+        <div class="row"><label>Location Name</label><input type="text" id="pickup_location"></div>
+        <div class="row"><label>Address</label><input type="text" id="pickup_address"></div>
+        <div class="row"><label>Unit</label><input type="text" id="pickup_unit"></div>
+        <div class="row"><label>City</label><input type="text" id="pickup_city"></div>
+        <div class="row"><label>State</label><input type="text" id="pickup_state"></div>
+        <div class="row"><label>Zip</label><input type="text" id="pickup_zip"></div>
+        <div class="row"><label>Contact Name</label><input type="text" id="pickup_contact"></div>
+        <div class="row"><label>Contact Phone</label><input type="tel" id="pickup_phone"></div>
+        <div class="row"><label>Pickup Location Note</label><textarea id="pickup_note"></textarea></div>
+      </div>
+
+      <!-- DELIVERY -->
+      <div class="card">
+        <h2 class="section">Delivery Information</h2>
+        <div class="row">
+          <label>Autofill</label>
+          <div class="autofill">
+            <select id="af-delivery"><option value="">— Saved delivery locations —</option></select>
+            <button type="button" class="btn secondary sm" onclick="applyPreset('delivery')">Fill</button>
+            <button type="button" class="btn secondary sm" onclick="savePreset('delivery')">Save current</button>
+          </div>
+        </div>
+        <div class="row">
+          <label>From customer</label>
+          <div class="autofill">
+            <select id="af-customer-delivery"><option value="">— Saved customers —</option></select>
+            <button type="button" class="btn secondary sm" onclick="fillFromCustomer('delivery')">Fill</button>
+          </div>
+        </div>
+        <div class="row"><label>Location Name</label><input type="text" id="delivery_location"></div>
+        <div class="row"><label>Address</label><input type="text" id="delivery_address"></div>
+        <div class="row"><label>Unit</label><input type="text" id="delivery_unit"></div>
+        <div class="row"><label>City</label><input type="text" id="delivery_city"></div>
+        <div class="row"><label>State</label><input type="text" id="delivery_state"></div>
+        <div class="row"><label>Zip</label><input type="text" id="delivery_zip"></div>
+        <div class="row"><label>Contact Name</label><input type="text" id="delivery_contact"></div>
+        <div class="row"><label>Contact Phone</label><input type="tel" id="delivery_phone"></div>
+        <div class="row"><label>Delivery Location Note</label><textarea id="delivery_note"></textarea></div>
+      </div>
+
+      <!-- ORDER DETAILS -->
+      <div class="card">
+        <h2 class="section">Order Details</h2>
+        <div class="row"><label>Ready Date</label><input type="date" id="ready_date"></div>
+        <div class="row checkrow"><label>Enclosed Trailer</label><div class="field"><input type="checkbox" id="enclosed"></div></div>
+        <div class="row checkrow"><label>Hold Order</label><div class="field"><input type="checkbox" id="hold"></div></div>
+      </div>
+
+      <!-- VEHICLES -->
+      <div class="card">
+        <h2 class="section">Vehicle Details</h2>
+        <p class="sub">Total Vehicles: <span id="vehCount">0</span> &nbsp;·&nbsp; Total Charge: <span id="vehTotal">$0</span></p>
+        <div id="vehicles"></div>
+        <div class="actions"><button type="button" class="btn secondary" onclick="addVehicle()">+ Add Vehicle</button></div>
+      </div>
+
+      <!-- SPECIAL INSTRUCTIONS -->
+      <div class="card">
+        <h2 class="section">Special Instructions</h2>
+        <textarea id="special" style="min-height:120px"></textarea>
+      </div>
+
+      <!-- FILE UPLOADS -->
+      <div class="card">
+        <h2 class="section">File Uploads</h2>
+        <p class="sub">Attach photos, BOLs, or documents. Files are stored on this computer with the order.</p>
+        <input type="file" id="fileInput" multiple onchange="addFiles(event)">
+        <div id="fileList" style="margin-top:12px"></div>
+        <p class="hint">Tip: keep attachments small (under ~2 MB each) so the browser storage stays fast.</p>
+      </div>
+
+      <div class="savebar">
+        <div class="actions">
+          <button type="submit" class="btn">Save Order</button>
+          <button type="button" class="btn secondary" onclick="resetForm()">Clear Form</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- ================= ALL ORDERS ================= -->
+  <div id="view-list" style="display:none">
+    <div class="card">
+      <div class="toolbar">
+        <input type="text" id="search" placeholder="Search name, city, VIN, order #…" oninput="renderList()">
+        <span class="spacer" style="flex:1"></span>
+        <button class="btn secondary sm" onclick="showView('backup')">Export</button>
+      </div>
+      <div id="listBody"></div>
+    </div>
+  </div>
+
+  <!-- ================= CUSTOMERS ================= -->
+  <div id="view-customers" style="display:none">
+    <div class="card">
+      <h2 class="section" id="custFormTitle">Add Customer</h2>
+      <p class="sub">Store customer info on its own — no order required. Saved customers can fill the billing section of a new order.</p>
+      <form id="custForm" autocomplete="off">
+        <input type="hidden" id="cust_editId" value="">
+        <div class="row"><label>Dealer / Company</label><input type="text" id="cust_name"></div>
+        <div class="row"><label>Brand</label><input type="text" id="cust_brand"></div>
+        <div class="row"><label>Main Contact</label><input type="text" id="cust_contact"></div>
+        <div class="row"><label>Phone</label><input type="tel" id="cust_phone"></div>
+        <div class="row"><label>Email</label><input type="email" id="cust_email"></div>
+        <div class="row"><label>Address</label><input type="text" id="cust_address"></div>
+        <div class="row"><label>Unit</label><input type="text" id="cust_unit"></div>
+        <div class="row"><label>City</label><input type="text" id="cust_city"></div>
+        <div class="row"><label>State</label><input type="text" id="cust_state"></div>
+        <div class="row"><label>Zip</label><input type="text" id="cust_zip"></div>
+        <div class="row"><label>Time Zone</label><input type="text" id="cust_tz"></div>
+        <div class="row"><label>Last Contact</label><input type="text" id="cust_last" placeholder="mm/dd/yyyy"></div>
+        <div class="row"><label>Level</label><input type="number" id="cust_level" step="1"></div>
+        <div class="row"><label>Owner</label><input type="text" id="cust_owner"></div>
+        <div class="row"><label>Notes</label><textarea id="cust_note"></textarea></div>
+        <div class="actions" style="justify-content:flex-start">
+          <button type="submit" class="btn">Save Customer</button>
+          <button type="button" class="btn secondary" onclick="resetCustForm()">Clear</button>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <div class="toolbar">
+        <input type="text" id="custSearch" placeholder="Search customers…" oninput="renderCustomers()">
+        <span style="flex:1"></span>
+        <button class="btn secondary sm" onclick="exportCustomersCSV()">Export CSV</button>
+        <label class="btn secondary sm" style="cursor:pointer;margin:0">Import CSV<input type="file" id="custCsvFile" accept=".csv" style="display:none" onchange="importCustomersCSV(event)"></label>
+      </div>
+      <p class="hint" style="margin:0 0 14px">Import accepts columns like Dealer, Brand, City, ST, Zip, Main Contact, Phone, Last Contact, Level, Owner (header order does not matter).</p>
+      <div id="custListBody"></div>
+    </div>
+  </div>
+
+  <!-- ================= CONTACTS ================= -->
+  <div id="view-contacts" style="display:none">
+    <div class="card">
+      <h2 class="section" id="contactFormTitle">Add Contact</h2>
+      <p class="sub">Contacts are people at a company. A company can have as many as you like.</p>
+      <form id="contactForm" autocomplete="off">
+        <input type="hidden" id="ct_editId" value="">
+        <div class="row"><label>Company</label><input type="text" id="ct_company"></div>
+        <div class="row"><label>Contact Name</label><input type="text" id="ct_name"></div>
+        <div class="row"><label>Job Title</label><input type="text" id="ct_title"></div>
+        <div class="row"><label>Work Phone</label><input type="tel" id="ct_work"></div>
+        <div class="row"><label>Cell Phone</label><input type="tel" id="ct_cell"></div>
+        <div class="row"><label>Fax</label><input type="tel" id="ct_fax"></div>
+        <div class="row"><label>Email</label><input type="email" id="ct_email"></div>
+        <div class="row"><label>City</label><input type="text" id="ct_city"></div>
+        <div class="row"><label>State</label><input type="text" id="ct_state"></div>
+        <div class="row"><label>Contact Owner</label><input type="text" id="ct_owner"></div>
+        <div class="row"><label>Notes</label><textarea id="ct_note"></textarea></div>
+        <div class="actions" style="justify-content:flex-start">
+          <button type="submit" class="btn">Save Contact</button>
+          <button type="button" class="btn secondary" onclick="resetContactForm()">Clear</button>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <div class="toolbar">
+        <input type="text" id="contactSearch" placeholder="Search company, name, email, phone…" oninput="renderContacts()">
+        <span style="flex:1"></span>
+        <button class="btn secondary sm" onclick="exportContactsCSV()">Export CSV</button>
+        <label class="btn secondary sm" style="cursor:pointer;margin:0">Import CSV<input type="file" id="contactCsvFile" accept=".csv" style="display:none" onchange="importContactsCSV(event)"></label>
+      </div>
+      <p class="hint" style="margin:0 0 14px">Import accepts columns like Company, Contact Name, Job Title, Work Phone, Cell Phone, Fax, Email, City, ST, Contact Owner (header order does not matter).</p>
+      <div id="contactListBody"></div>
+    </div>
+  </div>
+
+  <!-- ================= QUOTE ================= -->
+  <div id="view-quote" style="display:none">
+    <div class="card">
+      <div class="qhead">
+        <h2 class="section" style="border:0;padding:0;margin:0">Quote Calculator</h2>
+        <button type="button" class="btn secondary sm" onclick="pullFromOrder()">Pull from current order</button>
+      </div>
+      <p class="sub">Fuel-adjusted pricing using RateBot's formula. Enter the base carrier cost for the lane; the tool adds the fuel adder for today's regional diesel and applies your margin.</p>
+
+      <div class="qgrid">
+        <div class="qfield">
+          <label>Origin state</label>
+          <select id="q_state" onchange="onStateChange()"></select>
+          <span class="hint">EIA region: <span class="reg-badge" id="q_region_label">US (national)</span></span>
+        </div>
+        <div class="qfield">
+          <label>Lane miles</label>
+          <input type="number" id="q_miles" step="1" min="0" placeholder="e.g. 1200">
+        </div>
+        <div class="qfield">
+          <label>Number of vehicles</label>
+          <input type="number" id="q_cars" step="1" min="1" value="1">
+        </div>
+        <div class="qfield">
+          <label>Vehicle type</label>
+          <select id="q_vtype" onchange="onVtypeChange()">
+            <option value="sedan">Sedan (9 cars / 6.5 MPG)</option>
+            <option value="suv">SUV / crossover (7 cars / 6.2 MPG)</option>
+            <option value="truck">Truck / van (6 cars / 5.8 MPG)</option>
+          </select>
+        </div>
+        <div class="qfield">
+          <label>Base carrier cost ($)</label>
+          <input type="number" id="q_cost" step="1" min="0" placeholder="what the carrier hauls it for">
+        </div>
+        <div class="qfield">
+          <label>Baseline diesel ($/gal)</label>
+          <input type="number" id="q_baseline" step="0.01" placeholder="diesel when that cost was set">
+          <span class="hint">Leave blank to use today's regional diesel (no fuel adjustment).</span>
+        </div>
+        <div class="qfield">
+          <label>Carrier capacity (cars/truck)</label>
+          <input type="number" id="q_cap" step="1" min="1" value="9">
+        </div>
+        <div class="qfield">
+          <label>Truck MPG</label>
+          <input type="number" id="q_mpg" step="0.1" min="1" value="6.5">
+        </div>
+        <div class="qfield">
+          <label>Target margin (%)</label>
+          <input type="number" id="q_margin" step="1" min="0" max="99" value="33">
+        </div>
+      </div>
+
+      <details class="diesel">
+        <summary>Current diesel by region ($/gal) — editable</summary>
+        <div class="reg-prices" id="q_regPrices"></div>
+      </details>
+
+      <div class="quote-out" id="q_out" style="display:none">
+        <div class="big" id="q_quote">$0</div>
+        <div class="percar" id="q_percar"></div>
+        <div class="line"><span>Base carrier cost</span><b id="q_o_base">$0</b></div>
+        <div class="line"><span>Fuel adder (today's diesel)</span><b id="q_o_adder">$0</b></div>
+        <div class="line"><span>Projected cost</span><b id="q_o_proj">$0</b></div>
+        <div class="line"><span>Margin applied</span><b id="q_o_margin">33%</b></div>
+      </div>
+      <p class="hint" id="q_hint" style="margin-top:14px">Enter lane miles and a base carrier cost to see a quote.</p>
+
+      <div class="actions" style="justify-content:flex-start;margin-top:8px">
+        <button type="button" class="btn" onclick="copyQuote()">Copy quote summary</button>
+        <button type="button" class="btn secondary" onclick="quoteToOrder()">Add to current order notes</button>
+      </div>
+      <p class="hint">Note: RateBot's model prices on fuel, distance, load share and margin. It does not include an enclosed-trailer factor, so that is not added here.</p>
+    </div>
+  </div>
+
+  <!-- ================= BACKUP ================= -->
+  <div id="view-backup" style="display:none">
+    <div class="card">
+      <h2 class="section">Backup &amp; Export</h2>
+      <div class="backup-note">
+        Your orders are saved in this browser on this computer. To keep a safe copy (or move to another machine),
+        download a backup regularly. The Excel/CSV export is for viewing &amp; sharing; the JSON backup is the one that can be re-imported here.
+      </div>
+      <p class="sub">Export your data</p>
+      <div class="actions" style="justify-content:flex-start;gap:12px;flex-wrap:wrap">
+        <button class="btn" onclick="exportCSV()">Export to Excel / CSV</button>
+        <button class="btn secondary" onclick="exportJSON()">Download backup (.json)</button>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:24px 0">
+      <p class="sub">Restore from a backup</p>
+      <div class="actions" style="justify-content:flex-start">
+        <input type="file" id="importFile" accept=".json" onchange="importJSON(event)">
+      </div>
+      <p class="hint">Importing merges the orders from a backup file into what you have now.</p>
+      <hr style="border:none;border-top:1px solid var(--line);margin:24px 0">
+      <p class="sub" style="color:var(--danger)">Danger zone</p>
+      <button class="btn danger sm" onclick="wipeAll()">Delete ALL orders</button>
+    </div>
+  </div>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const KEY='orderEntry.orders.v1';
+const PRESETKEY='orderEntry.presets.v1';
+const SEQKEY='orderEntry.seq.v1';
+const CUSTKEY='orderEntry.customers.v1';
+const CUSTFIELDS=['cust_name','cust_brand','cust_contact','cust_phone','cust_email','cust_address','cust_unit','cust_city','cust_state','cust_zip','cust_tz','cust_last','cust_level','cust_owner','cust_note'];
+
+const FIELDS=[
+  'billing_name','billing_address','billing_unit','billing_city','billing_state','billing_zip','billing_contact','billing_phone','billing_email','billing_note',
+  'pickup_location','pickup_address','pickup_unit','pickup_city','pickup_state','pickup_zip','pickup_contact','pickup_phone','pickup_note',
+  'delivery_location','delivery_address','delivery_unit','delivery_city','delivery_state','delivery_zip','delivery_contact','delivery_phone','delivery_note',
+  'ready_date','special'
+];
+
+let currentFiles=[]; // {name,size,type,data}
+
+/* ---------- storage helpers ---------- */
+function loadOrders(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
+function saveOrders(a){localStorage.setItem(KEY,JSON.stringify(a));updateCount()}
+function loadPresets(){try{return JSON.parse(localStorage.getItem(PRESETKEY))||{billing:[],pickup:[],delivery:[]}}catch(e){return{billing:[],pickup:[],delivery:[]}}}
+function savePresets(p){localStorage.setItem(PRESETKEY,JSON.stringify(p))}
+function loadCustomers(){try{return JSON.parse(localStorage.getItem(CUSTKEY))||[]}catch(e){return[]}}
+function saveCustomers(a){localStorage.setItem(CUSTKEY,JSON.stringify(a));refreshCustomerDropdown()}
+function nextSeq(){let n=parseInt(localStorage.getItem(SEQKEY)||'5090',10)+1;localStorage.setItem(SEQKEY,n);return n}
+
+function updateCount(){const n=loadOrders().length;document.getElementById('countPill').textContent=n+(n===1?' order':' orders')}
+
+/* ---------- toast ---------- */
+let toastTimer;
+function toast(msg,type){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type?' '+type:'');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.className='toast',2600)}
+
+/* ---------- views ---------- */
+function showView(v){
+  document.getElementById('view-new').style.display=v==='new'?'block':'none';
+  document.getElementById('view-list').style.display=v==='list'?'block':'none';
+  document.getElementById('view-customers').style.display=v==='customers'?'block':'none';
+  document.getElementById('view-contacts').style.display=v==='contacts'?'block':'none';
+  document.getElementById('view-quote').style.display=v==='quote'?'block':'none';
+  document.getElementById('view-backup').style.display=v==='backup'?'block':'none';
+  document.getElementById('nav-new').classList.toggle('active',v==='new');
+  document.getElementById('nav-list').classList.toggle('active',v==='list');
+  document.getElementById('nav-customers').classList.toggle('active',v==='customers');
+  document.getElementById('nav-contacts').classList.toggle('active',v==='contacts');
+  document.getElementById('nav-quote').classList.toggle('active',v==='quote');
+  document.getElementById('nav-backup').classList.toggle('active',v==='backup');
+  if(v==='new')refreshCustomerDropdown();
+  if(v==='list')renderList();
+  if(v==='customers')renderCustomers();
+  if(v==='contacts')renderContacts();
+  if(v==='quote')renderQuote();
+  window.scrollTo(0,0);
+}
+
+/* ---------- customers ---------- */
+function refreshCustomerDropdown(){
+  const opts='<option value="">— Saved customers —</option>'+
+    loadCustomers().map(c=>`<option value="${c.id}">${esc(c.cust_name||c.cust_contact||c.cust_city)}</option>`).join('');
+  ['billing','pickup','delivery'].forEach(sec=>{
+    const sel=document.getElementById('af-customer-'+sec);if(!sel)return;
+    const cur=sel.value;sel.innerHTML=opts;sel.value=cur;
+  });
+}
+function resetCustForm(){
+  document.getElementById('custForm').reset();
+  document.getElementById('cust_editId').value='';
+  document.getElementById('custFormTitle').textContent='Add Customer';
+}
+document.getElementById('custForm').addEventListener('submit',function(ev){
+  ev.preventDefault();
+  const c={};CUSTFIELDS.forEach(f=>c[f]=document.getElementById(f).value.trim());
+  if(!c.cust_name&&!c.cust_contact){toast('Enter a customer or contact name',' err');return}
+  const list=loadCustomers();
+  const editId=document.getElementById('cust_editId').value;
+  if(editId){const i=list.findIndex(x=>x.id===editId);if(i>-1){c.id=editId;c.created=list[i].created;list[i]=c}}
+  else{c.id='c_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);c.created=Date.now();list.push(c)}
+  saveCustomers(list);
+  toast('Customer saved','ok');resetCustForm();renderCustomers();
+});
+function editCustomer(id){
+  const c=loadCustomers().find(x=>x.id===id);if(!c)return;
+  CUSTFIELDS.forEach(f=>document.getElementById(f).value=c[f]||'');
+  document.getElementById('cust_editId').value=id;
+  document.getElementById('custFormTitle').textContent='Edit Customer';
+  window.scrollTo(0,0);toast('Editing customer');
+}
+function deleteCustomer(id,e){
+  if(e)e.stopPropagation();
+  if(!confirm('Delete this customer?'))return;
+  saveCustomers(loadCustomers().filter(c=>c.id!==id));renderCustomers();toast('Customer deleted');
+}
+function renderCustomers(){
+  const q=(document.getElementById('custSearch').value||'').toLowerCase();
+  let list=loadCustomers().sort((a,b)=>(a.cust_name||'').localeCompare(b.cust_name||''));
+  if(q)list=list.filter(c=>CUSTFIELDS.map(f=>c[f]).join(' ').toLowerCase().includes(q));
+  const box=document.getElementById('custListBody');
+  if(!list.length){box.innerHTML='<div class="empty">No customers yet. Add one above.</div>';return}
+  box.innerHTML=`<table><thead><tr>
+    <th>Dealer</th><th>Brand</th><th>City</th><th>ST</th><th>Main Contact</th><th>Phone</th><th>Last Contact</th><th>Level</th><th></th>
+  </tr></thead><tbody>${list.map(c=>`
+    <tr onclick="editCustomer('${c.id}')">
+      <td><b>${esc(c.cust_name)||'<span class="meta">—</span>'}</b></td>
+      <td>${esc(c.cust_brand)||'<span class="meta">—</span>'}</td>
+      <td>${esc(c.cust_city)||'<span class="meta">—</span>'}</td>
+      <td>${esc(c.cust_state)||'<span class="meta">—</span>'}</td>
+      <td>${esc(c.cust_contact)||'<span class="meta">—</span>'}</td>
+      <td>${esc(c.cust_phone)||'<span class="meta">—</span>'}</td>
+      <td>${esc(c.cust_last)||'<span class="meta">—</span>'}</td>
+      <td>${esc(c.cust_level)||'<span class="meta">—</span>'}</td>
+      <td><button class="btn danger sm" onclick="deleteCustomer('${c.id}',event)">Delete</button></td>
+    </tr>`).join('')}</tbody></table>`;
+}
+/* ---------- customer CSV import/export ---------- */
+const CUST_HEADER_MAP={
+  'dealer':'cust_name','dealer / company':'cust_name','dealer/company':'cust_name','company':'cust_name','customer':'cust_name','customer / company':'cust_name','name':'cust_name',
+  'brand':'cust_brand',
+  'main contact':'cust_contact','contact':'cust_contact','contact name':'cust_contact',
+  'phone':'cust_phone','phone #':'cust_phone','phone number':'cust_phone','phone#':'cust_phone',
+  'email':'cust_email','e-mail':'cust_email',
+  'address':'cust_address','street':'cust_address',
+  'unit':'cust_unit','suite':'cust_unit',
+  'city':'cust_city',
+  'st':'cust_state','state':'cust_state',
+  'zip':'cust_zip','zip code':'cust_zip','zipcode':'cust_zip','postal':'cust_zip','postal code':'cust_zip',
+  'time zone':'cust_tz','timezone':'cust_tz','tz':'cust_tz',
+  'last contact':'cust_last','last contacted':'cust_last','last contact date':'cust_last',
+  'level':'cust_level',
+  'owner':'cust_owner','rep':'cust_owner','sales rep':'cust_owner',
+  'notes':'cust_note','note':'cust_note','comments':'cust_note'
+};
+function cleanVal(v){return (v==null?'':String(v)).replace(/Â/g,'').replace(/\\/g,'').replace(/\s+/g,' ').trim()}
+// RFC-ish CSV parser -> array of rows (arrays of strings)
+function parseCSV(text){
+  text=text.replace(/^﻿/,'');
+  const rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(q){
+      if(ch==='"'){if(text[i+1]==='"'){cur+='"';i++}else q=false}
+      else cur+=ch;
+    }else{
+      if(ch==='"')q=true;
+      else if(ch===','){row.push(cur);cur=''}
+      else if(ch==='\n'){row.push(cur);rows.push(row);row=[];cur=''}
+      else if(ch==='\r'){}
+      else cur+=ch;
+    }
+  }
+  if(cur!==''||row.length){row.push(cur);rows.push(row)}
+  return rows.filter(r=>r.some(c=>c.trim()!==''));
+}
+function importCustomersCSV(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    const rows=parseCSV(r.result);
+    if(rows.length<2){toast('CSV needs a header row plus data',' err');e.target.value='';return}
+    const headers=rows[0].map(h=>cleanVal(h).toLowerCase());
+    const cols=headers.map(h=>CUST_HEADER_MAP[h]||null);
+    if(!cols.includes('cust_name')){toast('No Dealer/Company column found in CSV',' err');e.target.value='';return}
+    const existing=loadCustomers();
+    const seen=new Set(existing.map(c=>((c.cust_name||'')+'|'+(c.cust_city||'')).toLowerCase()));
+    let added=0,skipped=0;
+    rows.slice(1).forEach((cells,idx)=>{
+      const c={};cols.forEach((field,i)=>{if(field)c[field]=cleanVal(cells[i])});
+      if(!c.cust_name){skipped++;return}
+      const key=((c.cust_name||'')+'|'+(c.cust_city||'')).toLowerCase();
+      if(seen.has(key)){skipped++;return}
+      seen.add(key);
+      c.id='c_'+Date.now()+'_'+idx+'_'+Math.random().toString(36).slice(2,6);
+      c.created=Date.now();
+      existing.push(c);added++;
+    });
+    saveCustomers(existing);renderCustomers();
+    toast('Imported '+added+' customers'+(skipped?(', '+skipped+' skipped/duplicate'):''),'ok');
+    e.target.value='';
+  };
+  r.readAsText(f);
+}
+function exportCustomersCSV(){
+  const list=loadCustomers();
+  if(!list.length){toast('No customers to export',' err');return}
+  const cols=[['Dealer','cust_name'],['Brand','cust_brand'],['Main Contact','cust_contact'],['Phone','cust_phone'],['Email','cust_email'],['Address','cust_address'],['Unit','cust_unit'],['City','cust_city'],['ST','cust_state'],['Zip','cust_zip'],['Time Zone','cust_tz'],['Last Contact','cust_last'],['Level','cust_level'],['Owner','cust_owner'],['Notes','cust_note']];
+  const head=cols.map(c=>c[0]).join(',');
+  const body=list.map(c=>cols.map(col=>csvCell(c[col[1]])).join(',')).join('\n');
+  download('customers_'+stamp()+'.csv','﻿'+head+'\n'+body,'text/csv');
+  toast('Exported '+list.length+' customers','ok');
+}
+/* ================= CONTACTS (many per company) ================= */
+const CONTACTKEY='orderEntry.contacts.v1';
+const CONTACTFIELDS=['ct_company','ct_name','ct_title','ct_work','ct_cell','ct_fax','ct_email','ct_city','ct_state','ct_owner','ct_note'];
+const CONTACT_HEADER_MAP={
+  'company':'ct_company','dealer':'ct_company','dealer / company':'ct_company','customer':'ct_company',
+  'contact name':'ct_name','name':'ct_name','contact':'ct_name',
+  'job title':'ct_title','title':'ct_title',
+  'work phone':'ct_work','work':'ct_work','office phone':'ct_work',
+  'cell phone':'ct_cell','cell':'ct_cell','mobile':'ct_cell','mobile phone':'ct_cell',
+  'fax':'ct_fax',
+  'email':'ct_email','email contact':'ct_email','e-mail':'ct_email',
+  'city':'ct_city',
+  'st':'ct_state','state':'ct_state',
+  'contact owner':'ct_owner','owner':'ct_owner','rep':'ct_owner',
+  'notes':'ct_note','note':'ct_note'
+};
+const CONTACT_RENDER_CAP=400;
+function loadContacts(){try{return JSON.parse(localStorage.getItem(CONTACTKEY))||[]}catch(e){return[]}}
+function saveContacts(a){localStorage.setItem(CONTACTKEY,JSON.stringify(a))}
+function resetContactForm(){
+  document.getElementById('contactForm').reset();
+  document.getElementById('ct_editId').value='';
+  document.getElementById('contactFormTitle').textContent='Add Contact';
+}
+document.getElementById('contactForm').addEventListener('submit',function(ev){
+  ev.preventDefault();
+  const c={};CONTACTFIELDS.forEach(f=>c[f]=document.getElementById(f).value.trim());
+  if(!c.ct_name&&!c.ct_company){toast('Enter a contact name or company',' err');return}
+  const list=loadContacts();
+  const editId=document.getElementById('ct_editId').value;
+  if(editId){const i=list.findIndex(x=>x.id===editId);if(i>-1){c.id=editId;c.created=list[i].created;list[i]=c}}
+  else{c.id='ct_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);c.created=Date.now();list.push(c)}
+  try{saveContacts(list)}catch(e){toast('Storage full — export a backup and remove some data',' err');return}
+  toast('Contact saved','ok');resetContactForm();renderContacts();
+});
+function editContact(id){
+  const c=loadContacts().find(x=>x.id===id);if(!c)return;
+  CONTACTFIELDS.forEach(f=>document.getElementById(f).value=c[f]||'');
+  document.getElementById('ct_editId').value=id;
+  document.getElementById('contactFormTitle').textContent='Edit Contact';
+  window.scrollTo(0,0);toast('Editing contact');
+}
+function deleteContact(id,e){
+  if(e)e.stopPropagation();
+  if(!confirm('Delete this contact?'))return;
+  saveContacts(loadContacts().filter(c=>c.id!==id));renderContacts();toast('Contact deleted');
+}
+function renderContacts(){
+  const q=(document.getElementById('contactSearch').value||'').toLowerCase();
+  let list=loadContacts();
+  if(q)list=list.filter(c=>CONTACTFIELDS.map(f=>c[f]).join(' ').toLowerCase().includes(q));
+  list.sort((a,b)=>(a.ct_company||'').localeCompare(b.ct_company||'')||(a.ct_name||'').localeCompare(b.ct_name||''));
+  const box=document.getElementById('contactListBody');
+  const total=list.length;
+  if(!total){box.innerHTML='<div class="empty">No contacts yet. Add one above or Import CSV.</div>';return}
+  const shown=list.slice(0,CONTACT_RENDER_CAP);
+  const note=total>CONTACT_RENDER_CAP?`<p class="hint">Showing first ${CONTACT_RENDER_CAP} of ${total.toLocaleString()} — type in the search box to narrow down.</p>`:`<p class="hint">${total.toLocaleString()} contact${total>1?'s':''}.</p>`;
+  box.innerHTML=note+`<table><thead><tr>
+    <th>Company</th><th>Contact</th><th>Title</th><th>Work</th><th>Cell</th><th>Email</th><th></th>
+  </tr></thead><tbody>${shown.map(c=>`
+    <tr onclick="editContact('${c.id}')">
+      <td><b>${esc(c.ct_company)||'<span class="meta">—</span>'}</b></td>
+      <td>${esc(c.ct_name)||'<span class="meta">—</span>'}</td>
+      <td>${esc(c.ct_title)||'<span class="meta">—</span>'}</td>
+      <td>${esc(c.ct_work)||'<span class="meta">—</span>'}</td>
+      <td>${esc(c.ct_cell)||'<span class="meta">—</span>'}</td>
+      <td>${esc(c.ct_email)||'<span class="meta">—</span>'}</td>
+      <td><button class="btn danger sm" onclick="deleteContact('${c.id}',event)">Delete</button></td>
+    </tr>`).join('')}</tbody></table>`;
+}
+function importContactsCSV(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    const rows=parseCSV(r.result);
+    if(rows.length<2){toast('CSV needs a header row plus data',' err');e.target.value='';return}
+    const headers=rows[0].map(h=>cleanVal(h).toLowerCase());
+    const cols=headers.map(h=>CONTACT_HEADER_MAP[h]||null);
+    if(!cols.includes('ct_name')&&!cols.includes('ct_company')){toast('No Contact Name or Company column found',' err');e.target.value='';return}
+    const list=loadContacts();
+    const seen=new Set(list.map(c=>((c.ct_company||'')+'|'+(c.ct_name||'')+'|'+(c.ct_email||'')).toLowerCase()));
+    let added=0,skipped=0;
+    rows.slice(1).forEach((cells,idx)=>{
+      const c={};cols.forEach((field,i)=>{if(field)c[field]=cleanVal(cells[i])});
+      if(!c.ct_name&&!c.ct_company){skipped++;return}
+      const key=((c.ct_company||'')+'|'+(c.ct_name||'')+'|'+(c.ct_email||'')).toLowerCase();
+      if(seen.has(key)){skipped++;return}
+      seen.add(key);
+      c.id='ct_'+Date.now()+'_'+idx+'_'+Math.random().toString(36).slice(2,6);c.created=Date.now();
+      list.push(c);added++;
+    });
+    try{saveContacts(list)}catch(err){toast('Storage full — too many to import at once',' err');e.target.value='';return}
+    renderContacts();
+    toast('Imported '+added.toLocaleString()+' contacts'+(skipped?(', '+skipped+' skipped/duplicate'):''),'ok');
+    e.target.value='';
+  };
+  r.readAsText(f);
+}
+function exportContactsCSV(){
+  const list=loadContacts();
+  if(!list.length){toast('No contacts to export',' err');return}
+  const cols=[['Company','ct_company'],['Contact Name','ct_name'],['Job Title','ct_title'],['Work Phone','ct_work'],['Cell Phone','ct_cell'],['Fax','ct_fax'],['Email','ct_email'],['City','ct_city'],['ST','ct_state'],['Contact Owner','ct_owner'],['Notes','ct_note']];
+  const head=cols.map(c=>c[0]).join(',');
+  const body=list.map(c=>cols.map(col=>csvCell(c[col[1]])).join(',')).join('\n');
+  download('contacts_'+stamp()+'.csv','﻿'+head+'\n'+body,'text/csv');
+  toast('Exported '+list.length.toLocaleString()+' contacts','ok');
+}
+function fillFromCustomer(sec){
+  const sel=document.getElementById('af-customer-'+sec);
+  const id=sel?sel.value:'';
+  if(!id){toast('Pick a customer first',' err');return}
+  const c=loadCustomers().find(x=>x.id===id);if(!c)return;
+  const nameField=(sec==='billing')?'name':'location';
+  const map={};
+  map[sec+'_'+nameField]='cust_name';
+  map[sec+'_contact']='cust_contact';
+  map[sec+'_phone']='cust_phone';
+  map[sec+'_address']='cust_address';
+  map[sec+'_unit']='cust_unit';
+  map[sec+'_city']='cust_city';
+  map[sec+'_state']='cust_state';
+  map[sec+'_zip']='cust_zip';
+  map[sec+'_note']='cust_note';
+  if(sec==='billing')map['billing_email']='cust_email';
+  Object.keys(map).forEach(k=>{const el=document.getElementById(k);if(el)el.value=c[map[k]]||''});
+  toast(sec.charAt(0).toUpperCase()+sec.slice(1)+' filled from customer','ok');
+}
+
+/* ---------- vehicles ---------- */
+function addVehicle(data){
+  const wrap=document.getElementById('vehicles');
+  const i=wrap.children.length;
+  const d=data||{};
+  const div=document.createElement('div');
+  div.className='vehicle';
+  div.innerHTML=`
+    <button type="button" class="btn danger sm remove" onclick="this.parentNode.remove();renumberVehicles()">Remove</button>
+    <h4>Vehicle <span class="vnum">${i+1}</span></h4>
+    <div class="grid">
+      <div class="one"><label>Year</label><input type="text" data-v="year" value="${esc(d.year)}"></div>
+      <div class="one"><label>Make</label><input type="text" data-v="make" value="${esc(d.make)}"></div>
+      <div class="one"><label>Model</label><input type="text" data-v="model" value="${esc(d.model)}"></div>
+      <div class="one" style="grid-column:1/-1"><label>VIN</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" data-v="vin" value="${esc(d.vin)}" placeholder="enter VIN to auto-fill year/make/model" onchange="maybeDecodeVin(this)">
+          <button type="button" class="btn secondary sm" style="white-space:nowrap" onclick="decodeVin(this)">Decode VIN</button>
+        </div></div>
+      <div class="one"><label>Price / Customer Charge ($)</label><input type="number" step="0.01" min="0" data-v="price" value="${esc(d.price)}" oninput="updateVehTotals()"></div>
+      <div class="one"><label>Color</label><input type="text" data-v="color" value="${esc(d.color)}"></div>
+      <div class="one"><label>Type</label><input type="text" data-v="type" value="${esc(d.type)}"></div>
+      <div class="one" style="grid-column:1/-1"><label>Operable?</label>
+        <select data-v="operable">
+          <option ${d.operable!=='No'?'selected':''}>Yes</option>
+          <option ${d.operable==='No'?'selected':''}>No</option>
+        </select></div>
+    </div>`;
+  wrap.appendChild(div);
+  renumberVehicles();
+}
+function renumberVehicles(){
+  const v=document.querySelectorAll('#vehicles .vehicle');
+  v.forEach((el,i)=>el.querySelector('.vnum').textContent=i+1);
+  document.getElementById('vehCount').textContent=v.length;
+  updateVehTotals();
+}
+function updateVehTotals(){
+  let total=0;
+  document.querySelectorAll('#vehicles [data-v="price"]').forEach(inp=>{total+=parseFloat(inp.value)||0});
+  document.getElementById('vehTotal').textContent='$'+total.toLocaleString(undefined,{minimumFractionDigits:total%1?2:0,maximumFractionDigits:2});
+}
+function collectVehicles(){
+  return [...document.querySelectorAll('#vehicles .vehicle')].map(el=>{
+    const o={};el.querySelectorAll('[data-v]').forEach(inp=>o[inp.dataset.v]=inp.value.trim());return o;
+  });
+}
+// auto-decode only when a full 17-char VIN is entered
+function maybeDecodeVin(input){
+  const vin=(input.value||'').trim();
+  if(vin.length===17)decodeVin(input.closest('.vehicle').querySelector('button'));
+}
+async function decodeVin(btn){
+  const veh=btn.closest('.vehicle');
+  const vinInput=veh.querySelector('[data-v="vin"]');
+  const vin=(vinInput.value||'').trim().toUpperCase();
+  if(vin.length<11){toast('Enter a full VIN first (11-17 characters)',' err');return}
+  const orig=btn.textContent;btn.disabled=true;btn.textContent='Decoding…';
+  try{
+    const res=await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/'+encodeURIComponent(vin)+'?format=json');
+    if(!res.ok)throw new Error('http');
+    const data=await res.json();
+    const r=data.Results&&data.Results[0];
+    if(!r||(!r.Make&&!r.Model&&!r.ModelYear)){toast('Could not decode that VIN — check it or enter manually',' err');return}
+    const set=(k,v)=>{const el=veh.querySelector('[data-v="'+k+'"]');if(el&&v)el.value=v;};
+    set('year',r.ModelYear);set('make',r.Make);set('model',r.Model);
+    const typeEl=veh.querySelector('[data-v="type"]');if(typeEl&&!typeEl.value&&r.BodyClass)typeEl.value=r.BodyClass;
+    vinInput.value=vin;
+    const label=[r.ModelYear,r.Make,r.Model].filter(Boolean).join(' ');
+    toast('Decoded: '+(label||'VIN'),'ok');
+  }catch(e){
+    toast('VIN decode needs internet — you can still type it in',' err');
+  }finally{btn.disabled=false;btn.textContent=orig;}
+}
+
+/* ---------- files ---------- */
+function addFiles(e){
+  const files=[...e.target.files];
+  files.forEach(f=>{
+    const r=new FileReader();
+    r.onload=()=>{currentFiles.push({name:f.name,size:f.size,type:f.type,data:r.result});renderFiles()};
+    r.readAsDataURL(f);
+  });
+  e.target.value='';
+}
+function renderFiles(){
+  const box=document.getElementById('fileList');
+  box.innerHTML=currentFiles.map((f,i)=>`<span class="fileitem">📎 ${esc(f.name)} <span class="meta">(${(f.size/1024).toFixed(0)} KB)</span> <button type="button" onclick="removeFile(${i})">✕</button></span>`).join('');
+}
+function removeFile(i){currentFiles.splice(i,1);renderFiles()}
+
+/* ---------- presets (autofill) ---------- */
+function refreshPresetDropdowns(){
+  const p=loadPresets();
+  ['billing','pickup','delivery'].forEach(sec=>{
+    const sel=document.getElementById('af-'+sec);
+    const first=sel.querySelector('option').outerHTML;
+    sel.innerHTML=first+p[sec].map((x,i)=>`<option value="${i}">${esc(x._label)}</option>`).join('');
+  });
+}
+function sectionFields(sec){return FIELDS.filter(f=>f.startsWith(sec+'_'))}
+function savePreset(sec){
+  const data={};sectionFields(sec).forEach(f=>data[f]=document.getElementById(f).value.trim());
+  const label=data[sec+'_location']||data[sec+'_name']||data[sec+'_address']||data[sec+'_city'];
+  if(!label){toast('Fill in a name/address first, then Save',' err');return}
+  data._label=label+(data[sec+'_city']?(' — '+data[sec+'_city']):'');
+  const p=loadPresets();p[sec].push(data);savePresets(p);refreshPresetDropdowns();
+  toast('Saved location for quick fill','ok');
+}
+function applyPreset(sec){
+  const sel=document.getElementById('af-'+sec);const idx=sel.value;
+  if(idx===''){toast('Pick a saved location first',' err');return}
+  const p=loadPresets()[sec][idx];
+  sectionFields(sec).forEach(f=>{if(f in p)document.getElementById(f).value=p[f]});
+  toast('Filled '+sec+' info','ok');
+}
+
+/* ---------- form save / load ---------- */
+function gatherForm(){
+  const o={};FIELDS.forEach(f=>o[f]=document.getElementById(f).value.trim());
+  o.enclosed=document.getElementById('enclosed').checked;
+  o.hold=document.getElementById('hold').checked;
+  o.vehicles=collectVehicles();
+  o.files=currentFiles.slice();
+  return o;
+}
+function resetForm(){
+  document.getElementById('orderForm').reset();
+  document.getElementById('editId').value='';
+  document.getElementById('vehicles').innerHTML='';
+  renumberVehicles();
+  currentFiles=[];renderFiles();
+  toast('Form cleared');
+}
+document.getElementById('orderForm').addEventListener('submit',function(ev){
+  ev.preventDefault();
+  const orders=loadOrders();
+  const data=gatherForm();
+  const editId=document.getElementById('editId').value;
+  if(editId){
+    const i=orders.findIndex(o=>o.id===editId);
+    if(i>-1){data.id=editId;data.orderNo=orders[i].orderNo;data.created=orders[i].created;data.updated=Date.now();orders[i]=data}
+  }else{
+    data.id='o_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    data.orderNo=nextSeq();data.created=Date.now();data.updated=Date.now();
+    orders.push(data);
+  }
+  try{saveOrders(orders);}catch(err){toast('Storage full — export & remove old attachments',' err');return}
+  toast('Order #'+data.orderNo+' saved','ok');
+  resetForm();
+  showView('list');
+});
+
+function editOrder(id){
+  const o=loadOrders().find(x=>x.id===id);if(!o)return;
+  resetForm();
+  FIELDS.forEach(f=>document.getElementById(f).value=o[f]||'');
+  document.getElementById('enclosed').checked=!!o.enclosed;
+  document.getElementById('hold').checked=!!o.hold;
+  (o.vehicles||[]).forEach(v=>addVehicle(v));
+  currentFiles=(o.files||[]).slice();renderFiles();
+  document.getElementById('editId').value=id;
+  showView('new');
+  toast('Editing order #'+o.orderNo);
+}
+function deleteOrder(id,e){
+  if(e)e.stopPropagation();
+  if(!confirm('Delete this order? This cannot be undone.'))return;
+  saveOrders(loadOrders().filter(o=>o.id!==id));renderList();toast('Order deleted');
+}
+
+/* ---------- list ---------- */
+function renderList(){
+  const q=(document.getElementById('search').value||'').toLowerCase();
+  let orders=loadOrders().sort((a,b)=>b.created-a.created);
+  if(q){
+    orders=orders.filter(o=>{
+      const hay=[o.orderNo,o.billing_name,o.pickup_city,o.delivery_city,o.pickup_location,o.delivery_location,
+        ...(o.vehicles||[]).map(v=>v.vin+' '+v.make+' '+v.model)].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  const box=document.getElementById('listBody');
+  if(!orders.length){box.innerHTML='<div class="empty">No orders yet. Click <b>New Order</b> to add one.</div>';return}
+  box.innerHTML=`<table><thead><tr>
+    <th>Order #</th><th>Billing</th><th>Pickup</th><th>Delivery</th><th>Vehicles</th><th>Ready</th><th>Flags</th><th></th>
+  </tr></thead><tbody>${orders.map(o=>`
+    <tr onclick="editOrder('${o.id}')">
+      <td><b>#${o.orderNo}</b></td>
+      <td>${esc(o.billing_name)||'<span class="meta">—</span>'}</td>
+      <td>${esc(o.pickup_city)||esc(o.pickup_location)||'<span class="meta">—</span>'}</td>
+      <td>${esc(o.delivery_city)||esc(o.delivery_location)||'<span class="meta">—</span>'}</td>
+      <td>${(o.vehicles||[]).length}</td>
+      <td>${esc(o.ready_date)||'<span class="meta">—</span>'}</td>
+      <td>${o.hold?'<span class="badge hold">HOLD</span> ':''}${o.enclosed?'<span class="badge enc">ENC</span>':''}</td>
+      <td><button class="btn danger sm" onclick="deleteOrder('${o.id}',event)">Delete</button></td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+/* ---------- export ---------- */
+function csvCell(v){v=(v==null?'':String(v));return '"'+v.replace(/"/g,'""')+'"'}
+function exportCSV(){
+  const orders=loadOrders();
+  if(!orders.length){toast('Nothing to export',' err');return}
+  const cols=['orderNo','ready_date','enclosed','hold',
+    'billing_name','billing_address','billing_unit','billing_city','billing_state','billing_zip','billing_contact','billing_phone','billing_email','billing_note',
+    'pickup_location','pickup_address','pickup_unit','pickup_city','pickup_state','pickup_zip','pickup_contact','pickup_phone','pickup_note',
+    'delivery_location','delivery_address','delivery_unit','delivery_city','delivery_state','delivery_zip','delivery_contact','delivery_phone','delivery_note',
+    'special','vehicles','total_charge','attachments','created'];
+  const head=cols.join(',');
+  const rows=orders.map(o=>cols.map(c=>{
+    if(c==='vehicles')return csvCell((o.vehicles||[]).map(v=>[v.year,v.make,v.model,v.vin,v.color,(v.price?('$'+v.price):'')].filter(Boolean).join(' ')).join(' | '));
+    if(c==='total_charge')return csvCell((o.vehicles||[]).reduce((a,v)=>a+(parseFloat(v.price)||0),0));
+    if(c==='attachments')return csvCell((o.files||[]).map(f=>f.name).join(' | '));
+    if(c==='created')return csvCell(new Date(o.created).toLocaleString());
+    if(c==='enclosed'||c==='hold')return csvCell(o[c]?'Yes':'No');
+    return csvCell(o[c]);
+  }).join(','));
+  download('orders_'+stamp()+'.csv','﻿'+head+'\n'+rows.join('\n'),'text/csv');
+  toast('Exported '+orders.length+' orders to CSV','ok');
+}
+function exportJSON(){
+  const data={app:'order-entry',version:1,exported:new Date().toISOString(),orders:loadOrders(),presets:loadPresets(),customers:loadCustomers(),contacts:loadContacts()};
+  download('orders_backup_'+stamp()+'.json',JSON.stringify(data,null,2),'application/json');
+  toast('Backup downloaded','ok');
+}
+function importJSON(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      const incoming=d.orders||(Array.isArray(d)?d:[]);
+      if(!incoming.length){toast('No orders found in file',' err');return}
+      const cur=loadOrders();const ids=new Set(cur.map(o=>o.id));
+      let added=0;incoming.forEach(o=>{if(!ids.has(o.id)){cur.push(o);added++}});
+      saveOrders(cur);
+      if(d.presets){const p=loadPresets();['billing','pickup','delivery'].forEach(s=>{if(d.presets[s])p[s]=p[s].concat(d.presets[s])});savePresets(p);refreshPresetDropdowns()}
+      if(d.customers&&d.customers.length){const cust=loadCustomers();const cids=new Set(cust.map(c=>c.id));let cadded=0;d.customers.forEach(c=>{if(!cids.has(c.id)){cust.push(c);cadded++}});saveCustomers(cust);}
+      if(d.contacts&&d.contacts.length){const cts=loadContacts();const ctids=new Set(cts.map(c=>c.id));let ctadded=0;d.contacts.forEach(c=>{if(!ctids.has(c.id)){cts.push(c);ctadded++}});saveContacts(cts);}
+      toast('Imported '+added+' new orders','ok');renderList();
+    }catch(err){toast('Could not read that file',' err')}
+  };
+  r.readAsText(f);e.target.value='';
+}
+function wipeAll(){
+  if(!confirm('Delete ALL orders permanently? Export a backup first if unsure.'))return;
+  if(!confirm('Really delete everything? This cannot be undone.'))return;
+  localStorage.removeItem(KEY);updateCount();renderList();toast('All orders deleted');
+}
+
+/* ---------- utils ---------- */
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function stamp(){const d=new Date();return d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2)}
+function download(name,content,type){
+  const blob=new Blob([content],{type:type});const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);
+}
+
+/* ================= QUOTE (RateBot fuel-adjusted) ================= */
+const QKEY='orderEntry.quoteSettings.v1';
+const REG_LABEL={US:'US (national)',CA:'California',PADD1:'East Coast',PADD2:'Midwest',PADD3:'Gulf',PADD4:'Rocky Mountain',PADD5X:'West (AZ/NV/OR/WA)'};
+const REG_DEFAULT={US:5.60,CA:7.22,PADD1:5.65,PADD2:5.53,PADD3:5.33,PADD4:5.07,PADD5X:5.90};
+const REGS=['US','CA','PADD1','PADD2','PADD3','PADD4','PADD5X'];
+const VTYPE={sedan:{cap:9,mpg:6.5},suv:{cap:7,mpg:6.2},truck:{cap:6,mpg:5.8}};
+// state -> EIA region (CA broken out; rest of West = PADD5X)
+const STATE_REGION={
+  CA:'CA',
+  AZ:'PADD5X',NV:'PADD5X',OR:'PADD5X',WA:'PADD5X',AK:'PADD5X',HI:'PADD5X',
+  CO:'PADD4',ID:'PADD4',MT:'PADD4',UT:'PADD4',WY:'PADD4',
+  AL:'PADD3',AR:'PADD3',LA:'PADD3',MS:'PADD3',NM:'PADD3',TX:'PADD3',
+  IL:'PADD2',IN:'PADD2',IA:'PADD2',KS:'PADD2',KY:'PADD2',MI:'PADD2',MN:'PADD2',MO:'PADD2',NE:'PADD2',ND:'PADD2',OH:'PADD2',OK:'PADD2',SD:'PADD2',TN:'PADD2',WI:'PADD2',
+  CT:'PADD1',DE:'PADD1',DC:'PADD1',FL:'PADD1',GA:'PADD1',ME:'PADD1',MD:'PADD1',MA:'PADD1',NH:'PADD1',NJ:'PADD1',NY:'PADD1',NC:'PADD1',PA:'PADD1',RI:'PADD1',SC:'PADD1',VT:'PADD1',VA:'PADD1',WV:'PADD1'
+};
+const STATES=['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+let quoteBuilt=false;
+
+function loadQSettings(){try{return JSON.parse(localStorage.getItem(QKEY))||{}}catch(e){return{}}}
+function saveQSettings(){
+  const s={diesel:{},margin:val('q_margin'),cap:val('q_cap'),mpg:val('q_mpg'),vtype:document.getElementById('q_vtype').value,state:document.getElementById('q_state').value};
+  REGS.forEach(r=>s.diesel[r]=val('q_cur_'+r));
+  localStorage.setItem(QKEY,JSON.stringify(s));
+}
+function val(id){const el=document.getElementById(id);return el?parseFloat(el.value):NaN}
+function regionForState(st){return STATE_REGION[st]||'US'}
+function dieselFor(region){const v=val('q_cur_'+region);return isNaN(v)?REG_DEFAULT[region]:v}
+
+function buildQuoteUI(){
+  if(quoteBuilt)return;quoteBuilt=true;
+  const saved=loadQSettings();
+  // state dropdown
+  const ss=document.getElementById('q_state');
+  ss.innerHTML='<option value="">— Select state —</option>'+STATES.map(s=>`<option value="${s}">${s}</option>`).join('');
+  // region diesel inputs
+  document.getElementById('q_regPrices').innerHTML=REGS.map(r=>{
+    const v=(saved.diesel&&saved.diesel[r]!=null)?saved.diesel[r]:REG_DEFAULT[r];
+    return `<div class="qfield"><label>${REG_LABEL[r]}</label><input type="number" step="0.01" id="q_cur_${r}" value="${Number(v).toFixed(2)}"></div>`;
+  }).join('');
+  // restore saved params
+  if(saved.margin!=null&&!isNaN(saved.margin))document.getElementById('q_margin').value=saved.margin;
+  if(saved.vtype){document.getElementById('q_vtype').value=saved.vtype;}
+  if(saved.cap!=null&&!isNaN(saved.cap))document.getElementById('q_cap').value=saved.cap;
+  if(saved.mpg!=null&&!isNaN(saved.mpg))document.getElementById('q_mpg').value=saved.mpg;
+  if(saved.state){document.getElementById('q_state').value=saved.state;}
+  onStateChange(true);
+  // live recalc on any input
+  ['q_state','q_miles','q_cars','q_cost','q_baseline','q_cap','q_mpg','q_margin'].concat(REGS.map(r=>'q_cur_'+r))
+    .forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',()=>{renderQuote();saveQSettings();})});
+}
+function onStateChange(skipRender){
+  const st=document.getElementById('q_state').value;
+  const reg=regionForState(st);
+  document.getElementById('q_region_label').textContent=REG_LABEL[reg];
+  if(!skipRender)renderQuote();
+}
+function onVtypeChange(){
+  const t=VTYPE[document.getElementById('q_vtype').value];
+  document.getElementById('q_cap').value=t.cap;
+  document.getElementById('q_mpg').value=t.mpg;
+  renderQuote();saveQSettings();
+}
+
+// RateBot formula (matches projectLane in the re-quoting tool)
+function computeQuote(){
+  const miles=val('q_miles'),cost=val('q_cost');
+  const cars=val('q_cars')||1,cap=val('q_cap')||9,mpg=val('q_mpg')||6.5;
+  const margin=(val('q_margin')||0)/100;
+  const reg=regionForState(document.getElementById('q_state').value);
+  const dieselNow=dieselFor(reg);
+  let baseline=val('q_baseline');if(isNaN(baseline))baseline=dieselNow; // blank = no fuel adjustment
+  if(isNaN(miles)||isNaN(cost))return null;
+  const share=cars/cap;
+  const adder=share*(miles/mpg)*(dieselNow-baseline);
+  const projected=cost+adder;
+  const quote=margin<1?projected/(1-margin):projected;
+  return {adder,projected,quote,perCar:quote/Math.max(1,cars),dieselNow,reg,cars};
+}
+function money(n){return '$'+Math.round(n).toLocaleString()}
+function renderQuote(){
+  buildQuoteUI();
+  const r=computeQuote();
+  const out=document.getElementById('q_out'),hint=document.getElementById('q_hint');
+  if(!r){out.style.display='none';hint.style.display='block';return}
+  out.style.display='block';hint.style.display='none';
+  document.getElementById('q_quote').textContent=money(r.quote);
+  document.getElementById('q_percar').textContent=r.cars>1?(money(r.perCar)+' per vehicle · '+r.cars+' vehicles'):'';
+  document.getElementById('q_o_base').textContent=money(val('q_cost'));
+  document.getElementById('q_o_adder').textContent=(r.adder<0?'-':'')+money(Math.abs(r.adder))+' ('+REG_LABEL[r.reg]+' @ $'+r.dieselNow.toFixed(2)+')';
+  document.getElementById('q_o_proj').textContent=money(r.projected);
+  document.getElementById('q_o_margin').textContent=(val('q_margin')||0)+'%';
+}
+function quoteSummaryText(){
+  const r=computeQuote();if(!r)return '';
+  const st=document.getElementById('q_state').value||'?';
+  return `Quote: ${money(r.quote)}${r.cars>1?(' ('+money(r.perCar)+'/vehicle x '+r.cars+')'):''}\n`+
+    `Lane: ${st} origin, ${val('q_miles')||0} mi · ${r.cars} vehicle(s)\n`+
+    `Base carrier cost ${money(val('q_cost'))} + fuel adder ${money(r.adder)} (${REG_LABEL[r.reg]} diesel $${r.dieselNow.toFixed(2)}), margin ${(val('q_margin')||0)}%`;
+}
+function copyQuote(){
+  const t=quoteSummaryText();if(!t){toast('Enter miles and base cost first',' err');return}
+  navigator.clipboard.writeText(t).then(()=>toast('Quote copied','ok'),()=>toast('Copy failed',' err'));
+}
+function quoteToOrder(){
+  const t=quoteSummaryText();if(!t){toast('Enter miles and base cost first',' err');return}
+  const el=document.getElementById('special');
+  el.value=(el.value?el.value+'\n\n':'')+t;
+  toast('Added to order Special Instructions','ok');
+  showView('new');
+}
+function pullFromOrder(){
+  buildQuoteUI();
+  const st=(document.getElementById('pickup_state').value||'').trim().toUpperCase();
+  if(st&&STATE_REGION[st]!=null){document.getElementById('q_state').value=st;onStateChange(true);}
+  const n=document.querySelectorAll('#vehicles .vehicle').length;
+  if(n>0)document.getElementById('q_cars').value=n;
+  renderQuote();saveQSettings();
+  toast('Pulled origin and vehicle count from order','ok');
+}
+/* ================= CLOUD SYNC + AUTH (Supabase) ================= */
+const SB_URL='https://dibqimcpxsdqttneaynq.supabase.co';
+const SB_KEY='sb_publishable_RVL5N8MsK-yGBhcWDYfxrw_1lJXyPJC';
+const SYNC_KEYS=[KEY,PRESETKEY,SEQKEY,CUSTKEY,CONTACTKEY,QKEY];
+let sb=null, uid=null, _rawSet=null;
+const _pushTimers={};
+
+function setSync(state,label){const p=document.getElementById('syncPill');if(!p)return;p.className='syncpill'+(state?(' '+state):'');p.textContent=label;}
+function refreshAll(){
+  updateCount();refreshPresetDropdowns();refreshCustomerDropdown();
+  const vis=id=>document.getElementById(id).style.display!=='none';
+  if(vis('view-list'))renderList();
+  if(vis('view-customers'))renderCustomers();
+  if(vis('view-contacts'))renderContacts();
+}
+function installCloudSync(){
+  _rawSet=localStorage.setItem.bind(localStorage);
+  localStorage.setItem=function(k,v){_rawSet(k,v);if(uid&&SYNC_KEYS.includes(k))scheduleCloudPush(k);};
+}
+function scheduleCloudPush(key){
+  clearTimeout(_pushTimers[key]);
+  setSync('busy','Syncing…');
+  _pushTimers[key]=setTimeout(()=>cloudPushNow(key),700);
+}
+async function cloudPushNow(key){
+  if(!uid||!sb)return;
+  let value=null;
+  try{value=JSON.parse(localStorage.getItem(key));}catch(e){value=localStorage.getItem(key);}
+  const {error}=await sb.from('app_data').upsert({user_id:uid,key:key,value:value,updated_at:new Date().toISOString()},{onConflict:'user_id,key'});
+  if(error){setSync('err','Sync error');console.warn('cloud push',key,error.message);}
+  else setSync('ok','Synced');
+}
+async function cloudPull(){
+  if(!uid||!sb)return;
+  setSync('busy','Syncing…');
+  const {data,error}=await sb.from('app_data').select('key,value').eq('user_id',uid);
+  if(error){setSync('err','Sync error');toast('Could not load from cloud: '+error.message,' err');return;}
+  const cloud={};(data||[]).forEach(r=>cloud[r.key]=r.value);
+  for(const k of SYNC_KEYS){
+    if(cloud[k]!==undefined&&cloud[k]!==null) _rawSet(k,JSON.stringify(cloud[k]));
+    else if(localStorage.getItem(k)!=null) cloudPushNow(k); // first-time migrate local up
+  }
+  refreshAll();
+  setSync('ok','Synced');
+}
+/* ---- auth ---- */
+function showLogin(){const o=document.getElementById('loginOverlay');if(o)o.style.display='flex';const b=document.getElementById('logoutBtn');if(b)b.style.display='none';}
+function hideLogin(){const o=document.getElementById('loginOverlay');if(o)o.style.display='none';const b=document.getElementById('logoutBtn');if(b)b.style.display='';}
+async function onLoggedIn(session){uid=session.user.id;hideLogin();await cloudPull();}
+function doLogout(){if(sb)sb.auth.signOut();}
+function initAuth(){
+  if(typeof supabase==='undefined'||!supabase.createClient){
+    // sync library not available (e.g. offline opening the local file): run local-only
+    document.getElementById('loginOverlay').style.display='none';
+    setSync('','Local only');
+    return;
+  }
+  sb=supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'oe-auth'}});
+  installCloudSync();
+  document.getElementById('loginForm').addEventListener('submit',async(ev)=>{
+    ev.preventDefault();
+    const btn=document.getElementById('loginBtn'),err=document.getElementById('loginErr');
+    err.textContent='';btn.disabled=true;btn.textContent='Signing in…';
+    const email=document.getElementById('loginEmail').value.trim();
+    const password=document.getElementById('loginPass').value;
+    const {error}=await sb.auth.signInWithPassword({email,password});
+    btn.disabled=false;btn.textContent='Sign in';
+    if(error)err.textContent=error.message||'Sign in failed. Check your email and password.';
+  });
+  sb.auth.getSession().then(({data})=>{ if(data.session)onLoggedIn(data.session); else showLogin(); });
+  sb.auth.onAuthStateChange((_e,session)=>{
+    if(session&&!uid)onLoggedIn(session);
+    else if(!session){uid=null;showLogin();}
+  });
+}
+
+/* ---------- init ---------- */
+refreshPresetDropdowns();
+refreshCustomerDropdown();
+updateCount();
+initAuth();
+</script>
+</body>
+</html>
