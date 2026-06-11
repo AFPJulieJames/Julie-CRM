@@ -382,7 +382,7 @@
         <div class="row"><label>Email</label><input type="email" id="ct_email"></div>
         <div class="row"><label>City</label><input type="text" id="ct_city"></div>
         <div class="row"><label>State</label><input type="text" id="ct_state"></div>
-        <div class="row"><label>Contact Owner</label><input type="text" id="ct_owner"></div>
+        <div class="row" id="row-ct-owner"><label>Contact Owner</label><input type="text" id="ct_owner"></div>
         <div class="row"><label>Notes</label><textarea id="ct_note"></textarea></div>
         <div class="actions" style="justify-content:flex-start">
           <button type="submit" class="btn">Save Contact</button>
@@ -754,7 +754,8 @@ function deleteContact(id,e){
   saveContacts(loadContacts().filter(c=>c.id!==id));renderContacts();toast('Contact deleted');
 }
 let CT_SORT={key:'ct_name',dir:1}, CT_FILTER='all';
-const CT_COLS=[['ct_name','Contact'],['ct_title','Title'],['ct_work','Phone'],['ct_email','Email'],['ct_owner','Owner']];
+const SHOW_CONTACT_OWNER=false; // set to true to expose Contact Owner (table column + form field) for a multi-user / team CRM
+const CT_COLS=[['ct_name','Contact'],['ct_title','Title'],['ct_work','Phone'],['ct_email','Email']].concat(SHOW_CONTACT_OWNER?[['ct_owner','Owner']]:[]);
 function ctHue(str){let h=0;str=str||'';for(let i=0;i<str.length;i++)h=(h*31+str.charCodeAt(i))%360;return h;}
 function setContactSort(k){if(CT_SORT.key===k)CT_SORT.dir*=-1;else CT_SORT={key:k,dir:1};renderContacts();}
 function setContactFilter(f){CT_FILTER=f;renderContacts();}
@@ -767,6 +768,7 @@ function syncCompanyDatalist(){
   }catch(e){}
 }
 function renderContacts(){
+  if(!SHOW_CONTACT_OWNER){var _or=document.getElementById("row-ct-owner");if(_or)_or.style.display="none";}
   const q=(document.getElementById('contactSearch').value||'').toLowerCase();
   let list=loadContacts();
   if(q)list=list.filter(c=>CONTACTFIELDS.map(f=>c[f]).join(' ').toLowerCase().includes(q));
@@ -800,7 +802,7 @@ function renderContacts(){
       '<td class="meta">'+(esc(c.ct_title)||'—')+'</td>'+
       '<td>'+(phone||'<span class="meta">—</span>')+'</td>'+
       '<td>'+(c.ct_email?'<a class="email-link" href="mailto:'+esc(c.ct_email)+'" onclick="event.stopPropagation()">'+esc(c.ct_email)+'</a>':'<span class="meta">—</span>')+'</td>'+
-      '<td class="meta">'+(esc(c.ct_owner)||'—')+'</td>'+
+      (SHOW_CONTACT_OWNER?'<td class="meta">'+(esc(c.ct_owner)||'—')+'</td>':'')+
       '<td><button class="btn danger sm" onclick="deleteContact(\''+c.id+'\',event)">Delete</button></td>'+
     '</tr>';}).join('')+'</tbody></table>';
   syncCompanyDatalist();
