@@ -114,7 +114,11 @@
   .chip{font-size:12.5px;font-weight:650;color:var(--muted);background:#fff;border:1.5px solid var(--line);padding:7px 14px;border-radius:999px;cursor:pointer;transition:all .15s}
   .chip:hover{border-color:#c9d4de;color:var(--ink)}
   .chip.on{color:var(--green);background:rgba(95,211,158,.13);border-color:rgba(31,111,79,.35)}
-  .chip.on::before{content:"¹3 ";font-weight:800}
+  table.ct td{padding:9px 14px}
+  table.ct .co{gap:9px}
+  table.ct .co-mark{width:26px;height:26px;font-size:9.5px;border-radius:7px}
+  table.ct .nm{font-size:13.5px;line-height:1.25}
+  table.ct .tp{font-size:10.5px}
   /* ---- misc ---- */
   .toolbar{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
   .toolbar input[type=text]{max-width:320px}
@@ -749,8 +753,8 @@ function deleteContact(id,e){
   if(!confirm('Delete this contact?'))return;
   saveContacts(loadContacts().filter(c=>c.id!==id));renderContacts();toast('Contact deleted');
 }
-let CT_SORT={key:'ct_company',dir:1}, CT_FILTER='all';
-const CT_COLS=[['ct_company','Company'],['ct_name','Contact'],['ct_title','Title'],['ct_work','Work'],['ct_cell','Cell'],['ct_email','Email']];
+let CT_SORT={key:'ct_name',dir:1}, CT_FILTER='all';
+const CT_COLS=[['ct_name','Contact'],['ct_title','Title'],['ct_work','Phone'],['ct_email','Email'],['ct_owner','Owner']];
 function ctHue(str){let h=0;str=str||'';for(let i=0;i<str.length;i++)h=(h*31+str.charCodeAt(i))%360;return h;}
 function setContactSort(k){if(CT_SORT.key===k)CT_SORT.dir*=-1;else CT_SORT={key:k,dir:1};renderContacts();}
 function setContactFilter(f){CT_FILTER=f;renderContacts();}
@@ -773,31 +777,30 @@ function renderContacts(){
   const k=CT_SORT.key,dir=CT_SORT.dir;
   list.sort((a,b)=>(((a[k]||'')+'').toLowerCase().localeCompare(((b[k]||'')+'').toLowerCase()))*dir||(a.ct_company||'').localeCompare(b.ct_company||''));
   const box=document.getElementById('contactListBody');
-  const owners={};loadContacts().forEach(c=>{if(c.ct_owner)owners[c.ct_owner]=(owners[c.ct_owner]||0)+1;});
-  const topOwners=Object.keys(owners).sort((a,b)=>owners[b]-owners[a]).slice(0,5);
   const chips='<div class="chips">'+
     '<span class="chip '+(CT_FILTER==='all'?'on':'')+'" onclick="setContactFilter(\'all\')">All</span>'+
     '<span class="chip '+(CT_FILTER==='email'?'on':'')+'" onclick="setContactFilter(\'email\')">Has email</span>'+
     '<span class="chip '+(CT_FILTER==='phone'?'on':'')+'" onclick="setContactFilter(\'phone\')">Has phone</span>'+
     '<span class="chip '+(CT_FILTER==='noemail'?'on':'')+'" onclick="setContactFilter(\'noemail\')">Missing email</span>'+
-    topOwners.map(function(o){var v='owner:'+o;return '<span class="chip '+(CT_FILTER===v?'on':'')+'" onclick="setContactFilter(\''+esc(v).replace(/\'/g,'')+'\')">'+esc(o)+'</span>';}).join('')+
     '</div>';
   const total=list.length;
   if(!total){box.innerHTML=chips+'<div class="empty">No contacts match. Adjust your search or filters.</div>';syncCompanyDatalist();return}
   const shown=list.slice(0,CONTACT_RENDER_CAP);
   const note=total>CONTACT_RENDER_CAP?'<p class="hint">Showing '+CONTACT_RENDER_CAP.toLocaleString()+' of '+total.toLocaleString()+' — narrow with search, filters, or column sort.</p>':'<p class="hint">'+total.toLocaleString()+' contact'+(total>1?'s':'')+'.</p>';
   const heads=CT_COLS.map(function(col){var key=col[0],lab=col[1];var sorted=CT_SORT.key===key;var arr='<span class="arr">'+(sorted?(CT_SORT.dir>0?'\u25B2':'\u25BC'):'\u25B4')+'</span>';return '<th class="sortable '+(sorted?'sorted':'')+'" onclick="setContactSort(\''+key+'\')">'+lab+' '+arr+'</th>';}).join('');
-  box.innerHTML=chips+note+'<table><thead><tr>'+heads+'<th></th></tr></thead><tbody>'+shown.map(function(c){
-    var co=esc(c.ct_company)||'';
-    var ini=((c.ct_company||'').replace(/[^A-Za-z ]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(function(w){return w[0]}).join('')||'?').toUpperCase();
-    var hue=ctHue(c.ct_company||c.ct_name||'');
+  box.innerHTML=chips+note+'<table class="ct"><thead><tr>'+heads+'<th></th></tr></thead><tbody>'+shown.map(function(c){
+    var src=(c.ct_name||c.ct_company||'');
+    var nm=esc(c.ct_name)||esc(c.ct_company)||'—';
+    var ini=(src.replace(/[^A-Za-z ]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(function(w){return w[0]}).join('')||'?').toUpperCase();
+    var hue=ctHue(src);
+    var sub=(c.ct_name&&c.ct_company)?esc(c.ct_company):'';
+    var phone=esc(c.ct_work)||esc(c.ct_cell)||'';
     return '<tr onclick="editContact(\''+c.id+'\')">'+
-      '<td><div class="co"><div class="co-mark" style="background:linear-gradient(140deg,hsl('+hue+' 42% 40%),hsl('+((hue+40)%360)+' 52% 54%))">'+esc(ini)+'</div><div><div class="nm">'+(co||'<span class=meta>—</span>')+'</div>'+(c.ct_owner?'<div class="tp">'+esc(c.ct_owner)+'</div>':'')+'</div></div></td>'+
-      '<td>'+(esc(c.ct_name)||'<span class="meta">—</span>')+'</td>'+
+      '<td><div class="co"><div class="co-mark" style="background:linear-gradient(140deg,hsl('+hue+' 42% 40%),hsl('+((hue+40)%360)+' 52% 54%))">'+esc(ini)+'</div><div><div class="nm">'+nm+'</div>'+(sub?'<div class="tp">'+sub+'</div>':'')+'</div></div></td>'+
       '<td class="meta">'+(esc(c.ct_title)||'—')+'</td>'+
-      '<td>'+(esc(c.ct_work)||'<span class="meta">—</span>')+'</td>'+
-      '<td>'+(esc(c.ct_cell)||'<span class="meta">—</span>')+'</td>'+
+      '<td>'+(phone||'<span class="meta">—</span>')+'</td>'+
       '<td>'+(c.ct_email?'<a class="email-link" href="mailto:'+esc(c.ct_email)+'" onclick="event.stopPropagation()">'+esc(c.ct_email)+'</a>':'<span class="meta">—</span>')+'</td>'+
+      '<td class="meta">'+(esc(c.ct_owner)||'—')+'</td>'+
       '<td><button class="btn danger sm" onclick="deleteContact(\''+c.id+'\',event)">Delete</button></td>'+
     '</tr>';}).join('')+'</tbody></table>';
   syncCompanyDatalist();
