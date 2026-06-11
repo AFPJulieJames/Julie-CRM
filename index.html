@@ -1054,10 +1054,11 @@ const REG_DLABEL={US:'US',P1:'East',P2:'Midwest',P3:'Gulf',P4:'Rocky Mtn',CA:'Ca
 function regionForDieselState(st){if(STATE_IDXREG[st])return STATE_IDXREG[st];if(GULF.has(st))return 'P3';return 'US';}
 const CLASS_CAPMPG={sedan:[9,6.5],suv:[7,6.2],truck:[6,5.8]};
 // distance decay fit on your lanes: pcm = A*miles^B, clamped to your dense data range
-// Recalibrated 2026-06 to current market (was A=18.5678,B=-0.521, fit on stale 10yr history that underpriced mid/long lanes ~40%).
-// POW_B flattened to the recent-lane decay; PCM_CAL lifts the regional anchors so fallback quotes clear today's carrier cost + margin.
-const POW_B=-0.27,PCM_CAL=1.57;
-function distFactor(mi){const m=Math.max(250,Math.min(2600,mi));return PCM_CAL*Math.pow(m/450,POW_B);}
+// Recalibrated 2026-06. Curve flattened from B=-0.521 (stale 10yr fit) to -0.27 (recent lanes).
+// Per-region anchors set from recent (2024+) orders, normalized to 450mi; West floored to clear current carrier cost.
+const POW_B=-0.27;
+const REGION_NOW={P5X:1.35,CA:0.91,P1:1.35,P2:1.48,P4:1.15};
+function distFactor(mi){const m=Math.max(250,Math.min(2600,mi));return Math.pow(m/450,POW_B);}
 const gid=id=>document.getElementById(id);
 const money=n=>(n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString();
 function val(id){const el=gid(id);return el?parseFloat(el.value):NaN}
@@ -1124,7 +1125,7 @@ function computeQuote(){
   }
   if(perVeh==null){
     const idx=STATE_IDXREG[st];
-    const regBase=(idx&&LRI.regions[idx])?LRI.regions[idx].now:LRI.current_pcm;
+    const regBase=(REGION_NOW[idx]!=null)?REGION_NOW[idx]:((idx&&LRI.regions[idx])?LRI.regions[idx].now:LRI.current_pcm);
     pcm=regBase*distFactor(miles);
     perVeh=pcm*miles;
     basis=(idx&&LRI.regions[idx]?('Regional: '+LRI.regions[idx].label):'National')+' rate, distance-adjusted';
