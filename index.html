@@ -407,6 +407,11 @@
             <input type="number" id="q_adjust" step="1" value="0" placeholder="0">
             <span class="hint">Optional markup or discount on the Index price. Leave at 0 for the straight rate.</span>
           </div>
+          <div class="qfield">
+            <label>Target margin (%)</label>
+            <input type="number" id="q_margin" step="1" value="35" placeholder="35">
+            <span class="hint">Your spread. Carrier cost = quote x (1 - this). 35% is your historical average.</span>
+          </div>
           <div class="qfield"><label>Sedan multiplier</label><input type="number" step="0.01" id="q_m_sedan" value="1.00"></div>
           <div class="qfield"><label>SUV multiplier</label><input type="number" step="0.01" id="q_m_suv" value="1.20"></div>
           <div class="qfield"><label>Truck/Van multiplier</label><input type="number" step="0.01" id="q_m_truck" value="1.40"></div>
@@ -418,6 +423,8 @@
       <div class="quote-out" id="q_out" style="display:none">
         <div class="big" id="q_quote">$0</div>
         <div class="percar" id="q_percar"></div>
+        <div class="line" style="font-weight:600"><span>Cost to carrier (target buy)</span><b id="q_o_carrier">—</b></div>
+        <div class="line" style="font-weight:600"><span>Your margin</span><b id="q_o_margin" style="color:#1f7a4d">—</b></div>
         <div class="line"><span>Basis</span><b id="q_o_basis">—</b></div>
         <div class="line"><span>Vehicle class</span><b id="q_o_class">—</b></div>
         <div class="line"><span>Lane miles</span><b id="q_o_miles">—</b></div>
@@ -1069,7 +1076,7 @@ let quoteBuilt=false, LRI=null, ZIPS=null, laneMap=null, milesManual=false, DIES
 
 function loadQSettings(){try{return JSON.parse(localStorage.getItem(QKEY))||{}}catch(e){return{}}}
 function saveQSettings(){localStorage.setItem(QKEY,JSON.stringify({pzip:gid('q_pzip').value,dzip:gid('q_dzip').value,adjust:gid('q_adjust').value,
-  vclass:gid('q_vclass').value,msedan:gid('q_m_sedan').value,msuv:gid('q_m_suv').value,mtruck:gid('q_m_truck').value,remoteAmt:gid('q_remote_amt').value}));}
+  vclass:gid('q_vclass').value,msedan:gid('q_m_sedan').value,msuv:gid('q_m_suv').value,mtruck:gid('q_m_truck').value,remoteAmt:gid('q_remote_amt').value,margin:gid('q_margin').value}));}
 
 async function loadQuoteData(){
   try{
@@ -1137,7 +1144,9 @@ function computeQuote(){
   const fuelAdj=(1/cm[0])*(miles/cm[1])*(dn-db);
   const remote=gid('q_remote').checked, remoteAmt=remote?(val('q_remote_amt')||0):0;
   perVeh=(perVeh+fuelAdj+remoteAmt)*(1+adj);
-  return {total:perVeh*cars,perVeh,cars,miles,basis,pcm,range,adj,cls,mult,exact,dn,db,dreg,fuelAdj,remote,remoteAmt};
+  const marginPct=Math.max(0,Math.min(90,(val('q_margin')||35)))/100;
+  const total=perVeh*cars, carrierCost=total*(1-marginPct), marginAmt=total-carrierCost;
+  return {total,perVeh,cars,miles,basis,pcm,range,adj,cls,mult,exact,dn,db,dreg,fuelAdj,remote,remoteAmt,marginPct,carrierCost,marginAmt};
 }
 function buildQuoteUI(){
   if(quoteBuilt)return;quoteBuilt=true;
@@ -1150,7 +1159,8 @@ function buildQuoteUI(){
   if(s.msuv)gid('q_m_suv').value=s.msuv;
   if(s.mtruck)gid('q_m_truck').value=s.mtruck;
   if(s.remoteAmt)gid('q_remote_amt').value=s.remoteAmt;
-  ['q_cars','q_adjust','q_m_sedan','q_m_suv','q_m_truck','q_remote_amt'].forEach(id=>{const el=gid(id);if(el)el.addEventListener('input',()=>{renderQuote();saveQSettings();});});
+  if(s.margin!=null&&s.margin!=='')gid('q_margin').value=s.margin;
+  ['q_cars','q_adjust','q_m_sedan','q_m_suv','q_m_truck','q_remote_amt','q_margin'].forEach(id=>{const el=gid(id);if(el)el.addEventListener('input',()=>{renderQuote();saveQSettings();});});
   updateLabels();
   loadQuoteData();
 }
@@ -1166,6 +1176,8 @@ function renderQuote(){
   gid('q_o_miles').textContent=r.miles.toLocaleString()+' mi'+(milesManual?'':' (est. from ZIPs)');
   gid('q_o_pcm').textContent='$'+(r.pcm||0).toFixed(2)+' /vehicle-mile';
   gid('q_o_diesel').textContent=(r.fuelAdj>=0?'+':'')+money(r.fuelAdj)+'/veh ('+REG_DLABEL[r.dreg]+' diesel $'+r.dn.toFixed(2)+(Math.abs(r.dn-r.db)>0.005?(' vs $'+r.db.toFixed(2)+' base'):'')+')';
+  gid('q_o_carrier').textContent=money(r.carrierCost)+(r.cars>1?(' ('+money(r.carrierCost/r.cars)+'/veh)'):'');
+  gid('q_o_margin').textContent=money(r.marginAmt)+' ('+Math.round(r.marginPct*100)+'%)';
   const remw=gid('q_o_remotewrap');
   if(r.remote&&r.remoteAmt){remw.style.display='';gid('q_o_remote').textContent='+'+money(r.remoteAmt)+'/veh';}else remw.style.display='none';
   const rw=gid('q_o_rangewrap');
@@ -1178,6 +1190,7 @@ function quoteSummaryText(){
   const pl=pi?(' ('+pi.city+', '+pi.state+')'):'',dl=di?(' ('+di.city+', '+di.state+')'):'';
   return `Quote: ${money(r.total)}${r.cars>1?(' ('+money(r.perVeh)+'/vehicle x '+r.cars+')'):''}\n`+
     `Lane: ${pz}${pl} to ${dz}${dl}, ${r.miles.toLocaleString()} mi · ${r.cars} ${CLASS_LABEL[r.cls]}\n`+
+    `Carrier cost (target buy): ${money(r.carrierCost)} · Your margin: ${money(r.marginAmt)} (${Math.round(r.marginPct*100)}%)\n`+
     `Basis: ${r.basis} (vehicle x${r.mult.toFixed(2)}); ${REG_DLABEL[r.dreg]} diesel $${r.dn.toFixed(2)}${r.remote&&r.remoteAmt?('; remote +'+money(r.remoteAmt)+'/veh'):''}`;
 }
 function copyQuote(){const t=quoteSummaryText();if(!t){toast('Enter pickup and delivery ZIP first',' err');return}navigator.clipboard.writeText(t).then(()=>toast('Quote copied','ok'),()=>toast('Copy failed',' err'));}
