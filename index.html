@@ -1,3 +1,7 @@
+https://raw.githubusercontent.com/AFPJulieJames/Julie-CRM/main/index.html
+→ https://raw.githubusercontent.com/AFPJulieJames/Julie-CRM/main/index.html
+Content-Type: text/plain; charset=utf-8
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1054,8 +1058,10 @@ const REG_DLABEL={US:'US',P1:'East',P2:'Midwest',P3:'Gulf',P4:'Rocky Mtn',CA:'Ca
 function regionForDieselState(st){if(STATE_IDXREG[st])return STATE_IDXREG[st];if(GULF.has(st))return 'P3';return 'US';}
 const CLASS_CAPMPG={sedan:[9,6.5],suv:[7,6.2],truck:[6,5.8]};
 // distance decay fit on your lanes: pcm = A*miles^B, clamped to your dense data range
-const POW_A=18.5678,POW_B=-0.521,PCM_REF=18.5678*Math.pow(450,-0.521);
-function distFactor(mi){const m=Math.max(250,Math.min(1500,mi));return (POW_A*Math.pow(m,POW_B))/PCM_REF;}
+// Recalibrated 2026-06 to current market (was A=18.5678,B=-0.521, fit on stale 10yr history that underpriced mid/long lanes ~40%).
+// POW_B flattened to the recent-lane decay; PCM_CAL lifts the regional anchors so fallback quotes clear today's carrier cost + margin.
+const POW_B=-0.27,PCM_CAL=1.57;
+function distFactor(mi){const m=Math.max(250,Math.min(2600,mi));return PCM_CAL*Math.pow(m/450,POW_B);}
 const gid=id=>document.getElementById(id);
 const money=n=>(n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString();
 function val(id){const el=gid(id);return el?parseFloat(el.value):NaN}
