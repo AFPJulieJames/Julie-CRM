@@ -286,6 +286,8 @@
       <div class="card">
         <h2 class="section">Vehicle Details</h2>
         <p class="sub">Total Vehicles: <span id="vehCount">0</span> &nbsp;·&nbsp; Total Charge: <span id="vehTotal">$0</span></p>
+        <div class="row"><label>Carrier Pay ($)</label><input type="number" step="0.01" min="0" id="carrier_pay" placeholder="What you pay the carrier" oninput="updateVehTotals()"></div>
+        <p class="sub" style="font-weight:600">Profit: <span id="vehProfit">$0</span></p>
         <div id="vehicles"></div>
         <div class="actions"><button type="button" class="btn secondary" onclick="addVehicle()">+ Add Vehicle</button></div>
       </div>
@@ -530,7 +532,7 @@ const FIELDS=[
   'billing_name','billing_address','billing_unit','billing_city','billing_state','billing_zip','billing_contact','billing_phone','billing_email','billing_note',
   'pickup_location','pickup_address','pickup_unit','pickup_city','pickup_state','pickup_zip','pickup_contact','pickup_phone','pickup_note',
   'delivery_location','delivery_address','delivery_unit','delivery_city','delivery_state','delivery_zip','delivery_contact','delivery_phone','delivery_note',
-  'ready_date','special'
+  'ready_date','special','carrier_pay'
 ];
 
 let currentFiles=[]; // {name,size,type,data}
@@ -902,10 +904,16 @@ function renumberVehicles(){
   document.getElementById('vehCount').textContent=v.length;
   updateVehTotals();
 }
+function fmtMoney(n){return '$'+n.toLocaleString(undefined,{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2});}
 function updateVehTotals(){
   let total=0;
   document.querySelectorAll('#vehicles [data-v="price"]').forEach(inp=>{total+=parseFloat(inp.value)||0});
-  document.getElementById('vehTotal').textContent='$'+total.toLocaleString(undefined,{minimumFractionDigits:total%1?2:0,maximumFractionDigits:2});
+  document.getElementById('vehTotal').textContent=fmtMoney(total);
+  const cpEl=document.getElementById('carrier_pay');
+  const carrierPay=cpEl?(parseFloat(cpEl.value)||0):0;
+  const profit=total-carrierPay;
+  const pEl=document.getElementById('vehProfit');
+  if(pEl){pEl.textContent=fmtMoney(profit);pEl.style.color=profit<0?'#c0392b':'#1a7f4b';}
 }
 function collectVehicles(){
   return [...document.querySelectorAll('#vehicles .vehicle')].map(el=>{
@@ -1027,13 +1035,15 @@ function editOrder(id){
   (o.vehicles||[]).forEach(v=>addVehicle(v));
   currentFiles=(o.files||[]).slice();renderFiles();
   document.getElementById('editId').value=id;
+  updateVehTotals();
   showView('new');
   toast('Editing order #'+o.orderNo);
 }
-function deleteOrder(id,e){
-  if(e)e.stopPropagation();
-  if(!confirm('Delete this order? This cannot be undone.'))return;
-  saveOrders(loadOrders().filter(o=>o.id!==id));renderList();toast('Order deleted');
+function setOrderStatus(id,val){
+  const orders=loadOrders();const o=orders.find(x=>x.id===id);if(!o)return;
+  o.status=val;o.updated=Date.now();
+  saveOrders(orders);renderList();
+  toast('Order #'+o.orderNo+' marked '+val.charAt(0).toUpperCase()+val.slice(1));
 }
 
 /* ---------- list ---------- */
@@ -1050,18 +1060,22 @@ function renderList(){
   const box=document.getElementById('listBody');
   if(!orders.length){box.innerHTML='<div class="empty">No orders yet. Click <b>New Order</b> to add one.</div>';return}
   box.innerHTML=`<table><thead><tr>
-    <th>Order #</th><th>Billing</th><th>Pickup</th><th>Delivery</th><th>Vehicles</th><th>Ready</th><th>Flags</th><th></th>
-  </tr></thead><tbody>${orders.map(o=>`
-    <tr onclick="editOrder('${o.id}')">
+    <th>Order #</th><th>Billing</th><th>Pickup</th><th>Delivery</th><th>Vehicles</th><th>Ready</th><th>Flags</th><th>Status</th>
+  </tr></thead><tbody>${orders.map(o=>{const st=o.status||'active';return `
+    <tr onclick="editOrder('${o.id}')" style="${st==='cancelled'?'opacity:.55;':''}">
       <td><b>#${o.orderNo}</b></td>
       <td>${esc(o.billing_name)||'<span class="meta">—</span>'}</td>
       <td>${esc(o.pickup_city)||esc(o.pickup_location)||'<span class="meta">—</span>'}</td>
       <td>${esc(o.delivery_city)||esc(o.delivery_location)||'<span class="meta">—</span>'}</td>
       <td>${(o.vehicles||[]).length}</td>
       <td>${esc(o.ready_date)||'<span class="meta">—</span>'}</td>
-      <td>${o.hold?'<span class="badge hold">HOLD</span> ':''}${o.enclosed?'<span class="badge enc">ENC</span>':''}</td>
-      <td><button class="btn danger sm" onclick="deleteOrder('${o.id}',event)">Delete</button></td>
-    </tr>`).join('')}</tbody></table>`;
+      <td>${o.hold?'<span class="badge hold">HOLD</span> ':''}${o.enclosed?'<span class="badge enc">ENC</span> ':''}${st==='delivered'?'<span class="badge" style="background:#d6f5e3;color:#1a7f4b">DELIVERED</span>':''}${st==='cancelled'?'<span class="badge" style="background:#fde2e2;color:#c0392b">CANCELLED</span>':''}</td>
+      <td><select class="statusSel" onclick="event.stopPropagation()" onchange="setOrderStatus('${o.id}',this.value)">
+        <option value="active"${st==='active'?' selected':''}>Active</option>
+        <option value="delivered"${st==='delivered'?' selected':''}>Delivered</option>
+        <option value="cancelled"${st==='cancelled'?' selected':''}>Cancelled</option>
+      </select></td>
+    </tr>`}).join('')}</tbody></table>`;
 }
 
 /* ---------- export ---------- */
@@ -1073,11 +1087,14 @@ function exportCSV(){
     'billing_name','billing_address','billing_unit','billing_city','billing_state','billing_zip','billing_contact','billing_phone','billing_email','billing_note',
     'pickup_location','pickup_address','pickup_unit','pickup_city','pickup_state','pickup_zip','pickup_contact','pickup_phone','pickup_note',
     'delivery_location','delivery_address','delivery_unit','delivery_city','delivery_state','delivery_zip','delivery_contact','delivery_phone','delivery_note',
-    'special','vehicles','total_charge','attachments','created'];
+    'special','vehicles','total_charge','carrier_pay','profit','status','attachments','created'];
   const head=cols.join(',');
   const rows=orders.map(o=>cols.map(c=>{
     if(c==='vehicles')return csvCell((o.vehicles||[]).map(v=>[v.year,v.make,v.model,v.vin,v.color,(v.price?('$'+v.price):'')].filter(Boolean).join(' ')).join(' | '));
     if(c==='total_charge')return csvCell((o.vehicles||[]).reduce((a,v)=>a+(parseFloat(v.price)||0),0));
+    if(c==='carrier_pay')return csvCell(parseFloat(o.carrier_pay)||0);
+    if(c==='profit')return csvCell(((o.vehicles||[]).reduce((a,v)=>a+(parseFloat(v.price)||0),0))-(parseFloat(o.carrier_pay)||0));
+    if(c==='status')return csvCell(o.status||'active');
     if(c==='attachments')return csvCell((o.files||[]).map(f=>f.name).join(' | '));
     if(c==='created')return csvCell(new Date(o.created).toLocaleString());
     if(c==='enclosed'||c==='hold')return csvCell(o[c]?'Yes':'No');
